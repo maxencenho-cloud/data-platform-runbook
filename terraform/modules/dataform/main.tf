@@ -2,17 +2,79 @@ variable "project_id" {}
 variable "region" {}
 variable "environment" {}
 
+data "google_project" "project" {
+  project_id = var.project_id
+}
+
+# 1. Create Secret Container for GitHub Token
+resource "google_secret_manager_secret" "dataform_github_token" {
+  project   = var.project_id
+  secret_id = "dataform-github-token-${var.environment}"
+  replication {
+    auto {}
+  }
+}
+
+# Note: The secret version (the actual token) must be added manually by the user
+# gcloud secrets versions add dataform-github-token-<env> --data-file=/path/to/token.txt
+
+# 2. Grant Secret Accessor to Dataform Service Account
+resource "google_secret_manager_secret_iam_member" "dataform_secret_accessor" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.dataform_github_token.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-dataform.iam.gserviceaccount.com"
+}
+
+# 3. Create the Dataform Repository with Git sync
 resource "google_dataform_repository" "dataform_repo" {
   provider = google-beta
   project  = var.project_id
   region   = var.region
   name     = "dataform-repo-${var.environment}"
+
+  git_remote_settings {
+    url                                 = "https://github.com/nnoziere-pyltech/data-platform.git"
+    default_branch                      = "main"
+    authentication_token_secret_version = "${google_secret_manager_secret.dataform_github_token.id}/versions/latest"
+  }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.dataform_secret_accessor
+  ]
 }
 
-# resource "google_dataform_repository_workspace" "dataform_workspace" {
-#   provider   = google-beta
-#   project    = var.project_id
-#   region     = var.region
-#   repository = google_dataform_repository.dataform_repo.name
-#   name       = "workspace-${var.environment}"
-# }
+# 4. Create a Release Configuration to compile the default branch
+resource "google_dataform_repository_release_config" "default_release" {
+  provider      = google-beta
+  project       = var.project_id
+  region        = var.region
+  repository    = google_dataform_repository.dataform_repo.name
+  name          = "daily-release"
+  git_commitish = "main"
+
+  # Optional: compile on a schedule
+  cron_schedule = "0 1 * * *"
+  time_zone     = "UTC"
+}
+
+# 5. Create a Workflow Configuration to execute the Release
+resource "google_dataform_repository_workflow_config" "nightly_workflow" {
+  provider       = google-beta
+  project        = var.project_id
+  region         = var.region
+  repository     = google_dataform_repository.dataform_repo.name
+  name           = "nightly-workflow"
+  release_config = google_dataform_repository_release_config.default_release.id
+  cron_schedule  = "0 2 * * *"
+  time_zone      = "UTC"
+
+  invocation_config {
+    # Run all actions
+    included_targets {
+      database = var.project_id
+      schema   = ""
+      name     = ""
+    }
+  }
+}
