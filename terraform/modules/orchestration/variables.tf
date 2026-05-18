@@ -23,8 +23,3 @@ variable "ingestion_topic_name" {
   type        = string
 }
 
-variable "dataform_release_config" {
-  description = "The release config identifier for Dataform executions. If empty, the default workspace is used."
-  type        = string
-  default     = ""
-}

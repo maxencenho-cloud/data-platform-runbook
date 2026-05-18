@@ -1,9 +1,3 @@
-resource "google_service_account" "scheduler_sa" {
-  account_id   = "scheduler-sa-${var.environment}"
-  display_name = "Cloud Scheduler Service Account"
-}
-
-
 
 # Scheduled Job triggering Ingestion via Pub/Sub for a specific source
 resource "google_cloud_scheduler_job" "scheduled_ingestion_example" {
