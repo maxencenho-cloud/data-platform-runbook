@@ -1,4 +1,3 @@
-
 # Scheduled Job triggering Ingestion via Pub/Sub for a specific source
 resource "google_cloud_scheduler_job" "scheduled_ingestion_example" {
   name             = "ingest-energx-scheduled-${var.environment}"

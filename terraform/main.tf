@@ -52,7 +52,6 @@ module "ingestion" {
 module "orchestration" {
   source               = "./modules/orchestration"
   project_id           = local.config.gcp.project_id
-  region               = local.config.gcp.region
   environment          = var.environment
   ingestion_topic_name = module.ingestion.ingestion_topic_name
 }

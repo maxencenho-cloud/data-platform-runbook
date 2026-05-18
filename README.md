@@ -26,17 +26,16 @@ The ingestion phase is fully decoupled and reactive:
       - On **BQ Load Failure**: The file is copied to `quarantine` and strictly deleted from `staging` and `processing` buckets.
       - On **BQ Load Success**: The file is strictly deleted from both `staging` and `processing` buckets to prevent accumulation.
 
-### 2. Batch Transformation (Orchestrated)
+### 2. Batch Transformation (Git-Synced)
 Business transformations are not tied to the ingestion of a specific file but run globally:
-1. **Cloud Scheduler**: Triggers a recurring task (e.g., every night at 2:00 AM).
-2. **Dataform API**: The Scheduler makes a direct HTTP POST call (with an OAuth token) to the Dataform API (`workflowInvocations`).
-3. **BigQuery (Silver / Gold)**: Dataform executes the SQLX dependency graph:
+1. **Git Sync**: GCP Dataform natively pulls the SQLX code from the GitHub repository (via a Secret Manager token).
+2. **Release Config**: A `daily-release` compiles the latest `main` branch code every day at 01:00 UTC.
+3. **Workflow Config**: A `nightly-workflow` executes the compiled release every day at 02:00 UTC.
+4. **BigQuery (Silver / Gold)**: Dataform executes the SQLX dependency graph:
    - Cleansing and standardization (**Silver**).
    - Aggregation and final business models (**Gold**).
 
-> **Architecture Note (ADR-002)**: The initially planned orchestrator (Cloud Workflows) has been superseded in favor of a complete decoupling with Cloud Scheduler, reducing complexity, costs, and asynchronous state management.
->
-> ⚠️ **Production Safety Warning**: The Terraform orchestration module accepts a dynamic target for Dataform. For development environments, it targets the default `main` branch workspace. For production environments, the Terraform variable must explicitly pass a compiled **Release Configuration** identifier to the Scheduler payload, ensuring only tested models are executed.
+> **Architecture Note (ADR-002)**: Cloud Scheduler is no longer used for Dataform orchestration. Dataform's native `release_config` + `workflow_config` handle compilation and execution scheduling natively — reducing moving parts and eliminating the need for OAuth token management.
 
 ---
 
