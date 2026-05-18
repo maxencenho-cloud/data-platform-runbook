@@ -1,0 +1,92 @@
+name: Deploy Ingestion Service
+
+on:
+  push:
+    branches:
+      - main
+      - prod
+    paths:
+      - 'src/ingestion/**'
+  pull_request:
+    paths:
+      - 'src/ingestion/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: ./src/ingestion
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio httpx
+
+      - name: Run tests
+        working-directory: ./src/ingestion
+        run: pytest tests/ --cov=. --cov-report=term-missing --cov-fail-under=70
+
+  deploy-cloud-run:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine Environment
+        id: env-mapping
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/prod" ]]; then
+            echo "env_name=prod" >> $GITHUB_OUTPUT
+          else
+            echo "env_name=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Parse config
+        id: config
+        run: |
+          WIF=$(yq eval '.gcp.wif_provider' env/config.${{ steps.env-mapping.outputs.env_name }}.yaml)
+          PROJECT=$(yq eval '.gcp.project_id' env/config.${{ steps.env-mapping.outputs.env_name }}.yaml)
+          REGION=$(yq eval '.gcp.region' env/config.${{ steps.env-mapping.outputs.env_name }}.yaml)
+          echo "wif_provider=$WIF" >> $GITHUB_OUTPUT
+          echo "project_id=$PROJECT" >> $GITHUB_OUTPUT
+          echo "region=$REGION" >> $GITHUB_OUTPUT
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ steps.config.outputs.wif_provider }}
+          service_account: cloud-run-deployer@${{ steps.config.outputs.project_id }}.iam.gserviceaccount.com
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and Push Docker Image
+        working-directory: ./src/ingestion
+        run: |
+          gcloud auth configure-docker ${{ steps.config.outputs.region }}-docker.pkg.dev
+          docker build -t ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:${{ github.sha }} .
+          docker build -t ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:latest .
+          docker push ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:${{ github.sha }}
+          docker push ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:latest
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ingestion-service-${{ steps.env-mapping.outputs.env_name }}
+          region: ${{ steps.config.outputs.region }}
+          image: ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:${{ github.sha }}

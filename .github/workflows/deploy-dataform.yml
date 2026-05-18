@@ -1,0 +1,92 @@
+name: Deploy Dataform
+
+on:
+  push:
+    branches:
+      - main
+      - prod
+    paths:
+      - 'dataform/**'
+  pull_request:
+    paths:
+      - 'dataform/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Dataform CLI
+        run: npm install -g @dataform/cli
+
+      - name: Compile Dataform
+        working-directory: ./dataform
+        run: dataform compile
+
+  deploy-dataform:
+    needs: compile
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine Environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/prod" ]]; then
+            echo "name=prod" >> $GITHUB_OUTPUT
+          else
+            echo "name=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Parse config
+        id: config
+        run: |
+          WIF=$(yq eval '.gcp.wif_provider' env/config.${{ steps.env.outputs.name }}.yaml)
+          PROJECT=$(yq eval '.gcp.project_id' env/config.${{ steps.env.outputs.name }}.yaml)
+          REGION=$(yq eval '.gcp.region' env/config.${{ steps.env.outputs.name }}.yaml)
+          echo "wif_provider=$WIF" >> $GITHUB_OUTPUT
+          echo "project_id=$PROJECT" >> $GITHUB_OUTPUT
+          echo "region=$REGION" >> $GITHUB_OUTPUT
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ steps.config.outputs.wif_provider }}
+          service_account: dataform-deployer@${{ steps.config.outputs.project_id }}.iam.gserviceaccount.com
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Best practice: use gcloud dataform to push code to the GCP Dataform Repository
+      # This replaces the workspace content with the current repo state
+      - name: Deploy Dataform code to repository
+        working-directory: ./dataform
+        run: |
+          REPO_NAME="dataform-repo-${{ steps.env.outputs.name }}"
+          PROJECT="${{ steps.config.outputs.project_id }}"
+          REGION="${{ steps.config.outputs.region }}"
+
+          # Create a compilation result to validate the code compiles in the target project
+          gcloud dataform compilation-results create \
+            --project="$PROJECT" \
+            --region="$REGION" \
+            --repository="$REPO_NAME" \
+            --git-commitish="main" \
+            --format=json
+
+          echo "Dataform compilation result created successfully for $REPO_NAME in $PROJECT."

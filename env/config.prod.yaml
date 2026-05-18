@@ -1,0 +1,11 @@
+groups:
+  data_engineers: "data-engineers-prod@example.com"
+  data_analysts: "data-analysts-prod@example.com"
+  business_users: "business-users-prod@example.com"
+
+gcp:
+  project_id: "my-project-prod"
+  region: "europe-west1"
+  wif_provider: "projects/123456789/locations/global/workloadIdentityPools/github/providers/my-repo"
+  terraform_sa: "terraform-sa@my-project-prod.iam.gserviceaccount.com"
+  tf_state_bucket: "my-project-prod-tfstate"

@@ -1,0 +1,82 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+      - prod
+    paths:
+      - 'terraform/**'
+      - 'schemas/**'
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - 'schemas/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Determine Environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/prod" ]]; then
+            echo "name=prod" >> $GITHUB_OUTPUT
+          else
+            echo "name=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Parse config
+        id: config
+        run: |
+          WIF=$(yq eval '.gcp.wif_provider' env/config.${{ steps.env.outputs.name }}.yaml)
+          SA=$(yq eval '.gcp.terraform_sa' env/config.${{ steps.env.outputs.name }}.yaml)
+          STATE_BUCKET=$(yq eval '.gcp.tf_state_bucket' env/config.${{ steps.env.outputs.name }}.yaml)
+          echo "wif_provider=$WIF" >> $GITHUB_OUTPUT
+          echo "service_account=$SA" >> $GITHUB_OUTPUT
+          echo "tf_state_bucket=$STATE_BUCKET" >> $GITHUB_OUTPUT
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ steps.config.outputs.wif_provider }}
+          service_account: ${{ steps.config.outputs.service_account }}
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init -backend-config="bucket=${{ steps.config.outputs.tf_state_bucket }}" -backend-config="prefix=terraform/state"
+
+      - name: Terraform Format
+        working-directory: ./terraform
+        run: terraform fmt -check -recursive
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: ./terraform
+
+      - name: Terraform Validate
+        working-directory: ./terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: terraform plan -var="environment=${{ steps.env.outputs.name }}" -out=tfplan
+
+      - name: Terraform Apply
+        if: github.event_name == 'push'
+        working-directory: ./terraform
+        run: terraform apply -auto-approve tfplan

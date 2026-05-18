@@ -1,0 +1,16 @@
+version: 1
+description: "Example raw data schema for ingestion validation"
+
+fields:
+  - name: id
+    type: int
+    nullable: false
+    description: "Unique identifier for the record"
+  - name: name
+    type: str
+    nullable: false
+    description: "Name of the entity"
+  - name: value
+    type: float
+    nullable: true
+    description: "Numeric value associated with the record"

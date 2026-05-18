@@ -1,0 +1,12 @@
+config {
+  type: "assertion",
+  description: "Ensures that all values in the example raw data are strictly positive."
+}
+
+SELECT
+  id,
+  value
+FROM
+  ${ref("example_raw_data")}
+WHERE
+  value <= 0

@@ -1,0 +1,6 @@
+config {
+  type: "declaration",
+  schema: dataform.projectConfig.vars.bronze_schema,
+  name: "example_raw_data",
+  description: "Raw data loaded from GCS by the ingestion service."
+}

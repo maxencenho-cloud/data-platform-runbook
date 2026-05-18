@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+tests/
+.pytest_cache/
+.git/
+.gitignore
+*.md
+.agents/
+.sentrux/

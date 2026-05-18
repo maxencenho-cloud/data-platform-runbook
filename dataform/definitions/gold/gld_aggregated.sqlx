@@ -1,0 +1,26 @@
+config {
+  type: "table",
+  schema: dataform.projectConfig.vars.gold_schema,
+  description: "Aggregated business metrics from the silver layer.",
+  uniqueKey: ["name"],
+  assertions: {
+    uniqueKey: ["name"],
+    nonNull: ["name", "total_count"]
+  },
+  columns: {
+    name: "The unique identifier name of the user or entity.",
+    total_count: "The total number of records processed for this entity.",
+    total_value: "The sum of all transaction values for this entity.",
+    average_value: "The mathematical average of the transaction values."
+  }
+}
+
+SELECT
+  name,
+  COUNT(id) AS total_count,
+  SUM(value) AS total_value,
+  AVG(value) AS average_value
+FROM
+  ${ref("slv_cleaned")}
+GROUP BY
+  name
