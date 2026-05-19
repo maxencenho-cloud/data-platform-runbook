@@ -1,160 +1,140 @@
-# Pyl.Tech : Atelier de Lancement - Data Platform (Phase POC)
+# Support de Cadrage : Architecture GCP, Landing Zone & Identités
 
-> **Date** : Mai 2026 | **Auteurs** : Équipe Pyl.Tech
-> *Support de cadrage technique pour l'atelier 1 (Architecture & Socle).*
+> **Date** : Mai 2026 | **Auteurs** : Équipe d'Architecture Pyl.Tech
+> *Support technique pour l'Atelier 1 (Architecture & Socle).*
 
-*Ce document est conçu pour être déroulé pas à pas. Il vous guidera dans la compréhension de l'architecture cible et l'exécution des prérequis techniques.*
+*Ce document de référence synthétise les choix architecturaux et les prérequis techniques liés au déploiement de la Data Platform. Il est conçu pour être autoporteur et consultable a posteriori par l'ensemble des parties prenantes (architectes, administrateurs réseau, chefs de projet).*
 
 ---
 
-## 1. Gouvernance & Fondations GCP
+## 1. Gouvernance et Fondations Cloud
 
-L'objectif du POC est de valider la valeur technique sur un périmètre restreint, tout en respectant dès le premier jour les standards de sécurité (isolation, IAM, CI/CD).
+L'objectif est de déployer le socle "Secure by Design" et de préparer la gestion des identités. Cela posera des bases saines, notamment pour la sécurité du futur Agent IA.
 
-### 1.1. L'Organisation et les Projets (Landing Zone)
+### 1.1. Modèle d'Organisation et de Projets (Landing Zone)
 
-GCP structure les ressources de manière hiérarchique. Le POC s'exécutera dans un conteneur (Projet) totalement isolé de votre production actuelle ou future.
+GCP structure les ressources de manière hiérarchique. La plateforme s'exécutera dans des Projets GCP isolés de votre production actuelle. Pour partir sur de bonnes bases, nous prévoyons directement deux environnements : **Dev** et **Prod**.
 
 ```mermaid
 graph TD
-    A["🏢 Organisation<br/>(votre-domaine.com)"] --> B["📁 Dossier : Production"]
-    A --> C["📁 Dossier : Non-Production"]
+    A["Organisation GCP<br/>(votre-domaine.com)"] --> B["Dossier : Production"]
+    A --> C["Dossier : Non-Production"]
     
-    C --> D["📦 Projet GCP : POC Data Platform"]
-    B --> E["📦 Projet GCP : Prod (futur)"]
+    C --> D["Projet GCP : idex-data-dev"]
+    B --> E["Projet GCP : idex-data-prod"]
     
-    D --> F["🪣 Cloud Storage (Buckets)"]
-    D --> G["📊 BigQuery (Datasets)"]
-    D --> H["⚙️ Cloud Run (Services)"]
-    D --> I["🔄 Dataform (Repos)"]
+    D --> F["Cloud Storage (Stockage brut)"]
+    D --> G["BigQuery (Entrepôt de données)"]
+    D --> H["Cloud Run (Calcul Serverless)"]
+    D --> I["Dataform (Orchestration SQL)"]
     
     style A fill:#0b132b,stroke:#0b132b,color:#fff
     style D fill:#F4BF46,stroke:#F4BF46,color:#0b132b
-    style E fill:#eeeeee,stroke:#ccc,color:#999
+    style E fill:#cd7f32,stroke:#cd7f32,color:#fff
 ```
 
-L'avantage majeur de votre environnement est que votre **Organisation GCP est déjà créée et liée à votre annuaire Google Workspace**. 
+Bonne nouvelle : votre **Organisation GCP** existe déjà et est nativement liée à votre annuaire Google Workspace. Cela va grandement faciliter la gestion des accès.
 
-**Todo :**
-1. **Vérifier l'Organisation** : Connectez-vous sur `console.cloud.google.com` (en tant qu'admin). Votre domaine doit apparaître en haut à gauche.
-2. **Créer le Projet POC** : Créez un projet nommé par exemple `idex-poc-data` dans un dossier "Non-Production".
-3. **Activer les APIs** sur ce projet : `bigquery.googleapis.com`, `run.googleapis.com`, `pubsub.googleapis.com`, `storage.googleapis.com`, `dataform.googleapis.com`, `secretmanager.googleapis.com`.
+**Actions Requises :**
+1. **Vérifier l'Organisation** : Connectez-vous sur `console.cloud.google.com`. Votre domaine doit apparaître en haut à gauche.
+2. **Créer les 2 Projets GCP** : `idex-data-dev` et `idex-data-prod`.
+3. **Activer les APIs GCP** : `bigquery.googleapis.com`, `run.googleapis.com`, `pubsub.googleapis.com`, `storage.googleapis.com`, `dataform.googleapis.com`, `secretmanager.googleapis.com`.
+4. **Instance Looker** : Validation et création de l'instance de test Looker.
 
 ---
 
-## 2. Gestion des Identités et Accès (IAM)
+## 2. Gestion des Identités et des Accès (IAM)
 
-Nous appliquons une séparation stricte entre les accès humains (Groupes) et les accès machines (Comptes de Service), basée sur le principe du moindre privilège.
+Nous séparons strictement les accès humains (Groupes) des accès machines (Comptes de Service), toujours sur le principe du moindre privilège.
 
-### 2.1. Cartographie des Accès (RBAC)
+### 2.1. Matrice des Rôles et Autorisations (RBAC)
 
-```mermaid
-flowchart TB
-    subgraph "Identités Humaines (via Groupes)"
-        U1["👤 Data Engineer"]
-        U2["👤 Data Analyst"]
-        U3["👤 Métier / Sponsor"]
-    end
-    
-    subgraph "Identités de Service (Service Accounts)"
-        SA1["🤖 ingestion-sa<br/>Cloud Run"]
-        SA3["🤖 terraform-sa<br/>CI/CD Déploiement"]
-        SA4["🤖 dataform-sa<br/>Dataform natif"]
-    end
-    
-    subgraph "Ressources GCP"
-        GCS["🪣 Cloud Storage"]
-        BQ["📊 BigQuery"]
-    end
-    
-    U1 -->|via Groupe| BQ
-    U2 -->|via Groupe| BQ
-    U3 -->|via Groupe, lecture seule| BQ
-    SA1 --> GCS
-    SA1 --> BQ
-    SA3 -->|WIF, pas de clé| GCS
-    SA3 -->|WIF, pas de clé| BQ
-    SA4 -->|Exécute les requêtes| BQ
-    
-    style SA1 fill:#208AAE,stroke:#0b132b,color:#fff
-    style SA3 fill:#5BC0BE,stroke:#0b132b,color:#0b132b
-    style SA4 fill:#208AAE,stroke:#0b132b,color:#fff
-```
+Le tableau ci-dessous formalise l'affectation des droits sur les ressources GCP :
 
-### 2.2. Les Groupes Humains (Action Requise)
+| Type d'Identité | Rôle Fonctionnel | Mode d'Authentification | Périmètre d'Accès Autorisé |
+|:---|:---|:---|:---|
+| **Humain** | Data Engineer | SSO Google Workspace (via Groupe) | **BigQuery** (Lecture/Écriture), **Cloud Storage** |
+| **Humain** | Data Analyst | SSO Google Workspace (via Groupe) | **BigQuery** (Lecture et Écriture limitées aux Data Marts) |
+| **Humain** | Utilisateur Métier | SSO Google Workspace (via Groupe) | **BigQuery** (Lecture seule sur les indicateurs agrégés) |
+| **Service (Machine)** | `ingestion-sa` (Cloud Run) | Compte de Service Natif GCP | **Cloud Storage** (Processing), **BigQuery** (Bronze) |
+| **Service (Machine)** | `terraform-sa` (CI/CD) | Workload Identity Federation | **Toutes ressources** (Déploiement Infrastructure as Code) |
+| **Service (Machine)** | `dataform-sa` | Compte de Service Natif GCP | **BigQuery** (Exécution des transformations SQLX) |
 
-Les groupes créés dans votre console d'administration Workspace sont nativement reconnus par GCP. **Aucun droit nominatif ne sera distribué**.
+### 2.2. Administration des Utilisateurs Humains
 
-**Todo :**
-1. Allez sur `admin.google.com` > Annuaire > Groupes.
-2. Créez les 3 groupes ci-dessous.
-3. Ajoutez l'équipe Pyl.Tech au groupe Engineers.
+Il faut définir comment l'équipe PylTech accèdera aux ressources. Puisque nous sommes tous sur Google Workspace, 3 options s'offrent à nous :
 
-| Groupe Workspace | Périmètre d'Accès GCP |
-|:-----------------|:----------------------|
-| `gcp-data-engineers@votre-domaine.com` | **Admin/Écriture** : Maintenance infra, ingestion, datasets Bronze/Silver/Gold. |
-| `gcp-data-analysts@votre-domaine.com` | **Lecture/Analyse** : Requêtage Dataform, accès complet Gold, lecture Bronze/Silver. |
-| `gcp-business-users@votre-domaine.com` | **Lecture Seule** : Consultation restreinte au dataset Gold (Data Marts/BI). |
+1. **Ajout direct de nos emails** (`@pyl.tech`) dans vos groupes Workspace IDEX (Solution recommandée et la plus simple).
+2. **Whitelisting du domaine** `@pyl.tech` sur votre tenant GCP (Si l'Option 1 est bloquée par vos règles de sécurité).
+3. **Création d'identités externes IDEX** pour les consultants (ex: `consultant.ext@idex.com`). C'est l'approche la plus lourde (gestion de licences).
 
-### 2.3. Les Comptes de Service (Gérés par le code)
+Durant la phase de développement, les équipes de réalisation nécessitent un niveau d'accès `Owner` (Propriétaire) sur le projet `dev` afin de garantir la vélocité. Le projet `prod` appliquera quant à lui une approche stricte de "Least Privilege".
 
-Ces comptes machines sont créés automatiquement par notre code Terraform. Ils ne partagent jamais leurs droits :
-- `ingestion-sa` : Écrit dans Cloud Storage (Processing/Quarantine) et BigQuery (Bronze).
-- `terraform-sa` : Déploie l'infrastructure (CI/CD).
-- `dataform-sa` : Exécute les transformations SQLX dans BigQuery.
+**Actions Requises :**
+1. Création de trois groupes de sécurité dans l'annuaire Google Workspace :
+   - `gcp-data-engineers@votre-domaine.com`
+   - `gcp-data-analysts@votre-domaine.com`
+   - `gcp-business-users@votre-domaine.com`
+2. Affectation de l'équipe Pyl.Tech au groupe "Engineers" selon l'option d'intégration retenue.
+
+### 2.3. Sécurité des Comptes de Service
+
+Ces comptes applicatifs sont créés automatiquement par notre code Terraform. Ils ne partagent jamais leurs droits entre eux.
 
 ---
 
-## 3. Sécurité CI/CD : Approche Zero Trust (WIF)
+## 3. Sécurité des Déploiements : Workload Identity (WIF)
 
-**Règle d'or : Aucune clé JSON statique de compte de service ne sera exportée ni stockée.**
+**Règle d'or : Aucune clé JSON statique ne sera exportée ni stockée.**
 
-Pour éviter toute fuite de credentials (par ex. un développeur qui "commit" une clé sur Git), nous utilisons **Workload Identity Federation (WIF)** :
+Les clés statiques sont la principale cause de failles de sécurité dans le Cloud. Pour sécuriser le pipeline CI/CD, nous utilisons **Workload Identity Federation (WIF)**. 
+
+Ce standard permet à votre outil Git de s'authentifier auprès de GCP de manière sécurisée et éphémère, sans utiliser de mot de passe.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Git as 🐙 Plateforme Git (Pipeline)
-    participant WIF as 🔐 Workload Identity (GCP)
-    participant GCP as ☁️ Ressources GCP
+    participant Git as Plateforme Git (Pipeline CI/CD)
+    participant WIF as Workload Identity Pool (GCP)
+    participant GCP as Ressources GCP cibles
 
-    Git->>WIF: Présente un jeton OIDC (courte durée)
-    WIF->>WIF: Vérifie l'identité du dépôt cryptographiquement
-    WIF->>GCP: Émet un token d'accès temporaire (Terraform SA)
-    Git->>GCP: terraform apply (avec token temporaire)
-    Note over Git,GCP: Le token expire après 1h. Aucun secret stocké.
+    Git->>WIF: Présentation d'un jeton OIDC (courte durée)
+    WIF->>WIF: Vérification cryptographique de l'identité du dépôt
+    WIF->>GCP: Émission d'un token d'accès temporaire lié au Service Account Terraform
+    Git->>GCP: Exécution du déploiement (terraform apply)
+    Note over Git,GCP: Le token expire automatiquement après 1 heure maximum. Aucun secret persistant n'existe.
 ```
 
-**Todo :**
-1. Identifier votre outil Git (GitHub, GitLab...).
-2. Pyl.Tech paramétrera avec vous le Workload Identity Pool sur GCP pour approuver spécifiquement ce dépôt.
+**Actions Requises :**
+1. Validation de l'outil de versioning (GitLab, GitHub, etc.) qui hébergera le code source.
+2. Configuration conjointe du `Workload Identity Pool` sur GCP pour n'approuver que les requêtes provenant spécifiquement de ce dépôt autorisé.
 
 ---
 
-## 4. Architecture Globale de la Plateforme
+## 4. Architecture Logique de la Plateforme
 
-L'architecture est découpée en deux flux asynchrones et découplés : l'ingestion (Event-Driven) et la transformation (Batch Medallion).
+L'architecture est découpée en deux flux asynchrones et découplés : l'Ingestion (Event-Driven) et la Transformation (Batch Medallion).
 
 ```mermaid
 graph TB
     subgraph "1. Ingestion Event-Driven"
-        SRC["📄 Fichier Source"] --> LAND["🪣 Landing"]
-        LAND -->|"Événement GCS"| PS["📬 Pub/Sub"]
-        PS -->|"Push"| CR["⚙️ Cloud Run<br/>(Python)"]
-        CR -->|"Validation OK"| STG["🪣 Staging"]
-        STG -->|"BQ Load Job"| BRZ["🥉 Bronze"]
-        CR -->|"Validation KO"| QUA["🪣 Quarantine"]
+        SRC["Fichiers Sources"] --> LAND["Zone Landing (Cloud Storage)"]
+        LAND -->|"Événement"| PS["Bus de Messages (Pub/Sub)"]
+        PS -->|"Déclenchement"| CR["Service d'Ingestion (Cloud Run)"]
+        CR -->|"Validation OK"| STG["Zone Staging (Cloud Storage)"]
+        STG -->|"Chargement"| BRZ["Couche Bronze (BigQuery)"]
+        CR -->|"Validation KO"| QUA["Zone Quarantine (Cloud Storage)"]
     end
     
-    subgraph "2. Transformation Batch"
-        GIT["🐙 GitHub"] -->|"Git Sync"| DF["🔄 Dataform"]
-        DF -->|"Nettoyage SQL"| SLV["🥈 Silver"]
-        DF -->|"Agrégation SQL"| GLD["🥇 Gold"]
+    subgraph "2. Transformation Batch (Dataform)"
+        GIT["Dépôt Git"] -->|"Synchronisation"| DF["Orchestrateur Dataform"]
+        DF -->|"Nettoyage"| SLV["Couche Silver (BigQuery)"]
+        DF -->|"Agrégation"| GLD["Couche Gold (BigQuery)"]
         BRZ -.->|"Source"| DF
     end
     
-    subgraph "3. Consommation"
-        GLD --> VIZ["📊 Looker / BI"]
+    subgraph "3. Restitution"
+        GLD --> VIZ["Plateforme BI (Looker)"]
     end
     
     style BRZ fill:#cd7f32,color:#fff
@@ -162,77 +142,72 @@ graph TB
     style GLD fill:#F4BF46,color:#0b132b
 ```
 
-### 4.1. Flux d'Ingestion : La règle du "All-or-Nothing"
+### 4.1. Flux d'Ingestion ("Circuit Breaker")
 
-Dès qu'un fichier source (CSV/JSONL) est déposé sur Cloud Storage :
-1. **Événement Pub/Sub** : Déclenche immédiatement le service d'ingestion (Cloud Run).
-2. **Validation stricte (YAML)** : Vérification du typage et des règles métier.
-3. **Poison Pill Handling** : Si une seule ligne est invalide, le fichier entier est rejeté en **Quarantaine**. S'il est 100% valide, il est chargé de manière atomique dans la table **Bronze** (BigQuery). L'entrepôt n'est jamais pollué par des données partielles.
+Dès qu'un fichier source est déposé, l'ingestion démarre. La règle du "All-or-Nothing" s'applique :
 
-### 4.2. Flux de Transformation (Dataform)
+1. La réception d'un fichier déclenche Pub/Sub.
+2. Cloud Run valide strictement le fichier vis-à-vis de son contrat (Schéma YAML).
+3. **Tout ou rien** : Si le fichier a une seule erreur, tout le fichier part en Quarantaine. S'il est 100% valide, il part en Bronze (BigQuery). L'entrepôt n'est jamais pollué par des données partielles.
 
-Dataform orchestre nativement la transformation de la donnée brute en indicateurs métier, via du code SQLX synchronisé avec votre dépôt Git.
+### 4.2. Transformation (Medallion)
 
-```mermaid
-graph LR
-    B["🥉 BRONZE<br/>Donnée Brute"] -->|"SQLX (Nettoyage,<br/>Typage, Dédup)"| S["🥈 SILVER<br/>Clean Data"]
-    S -->|"SQLX (Agrégation,<br/>Jointures métier)"| G["🥇 GOLD<br/>KPIs / Data Marts"]
-    
-    style B fill:#cd7f32,color:#fff
-    style S fill:#c0c0c0,color:#0b132b
-    style G fill:#F4BF46,color:#0b132b
-```
+Dataform orchestre la transformation de la donnée brute en indicateurs métiers :
+- **Bronze** : Donnée brute, historisée.
+- **Silver** : Donnée nettoyée, typée, dédupliquée.
+- **Gold** : Donnée agrégée (KPIs, Data Marts) pour Looker.
 
 ---
 
-## 5. Pratiques d'Ingénierie (GitOps & Terraform)
+## 5. Standards d'Ingénierie (Infrastructure as Code)
 
-L'intégralité du socle (Réseau, Stockage, IAM, Compute) est définie en code Terraform.
+L'intégralité du socle technique (Réseau, Stockage, IAM, Traitements) est provisionnée via du code Terraform.
 
 ```mermaid
 graph TD
-    subgraph "Code Terraform (modules)"
-        M1["📦 storage"]
-        M2["📦 bigquery"]
-        M3["📦 ingestion"]
-        M4["📦 dataform"]
-        M5["📦 monitoring"]
+    subgraph "Modules Terraform Réutilisables"
+        M1["Module : storage"]
+        M2["Module : bigquery"]
+        M3["Module : ingestion"]
+        M4["Module : dataform"]
+        M5["Module : monitoring"]
     end
     
-    subgraph "Configuration"
-        DEV["📄 config.poc.yaml"]
+    subgraph "Configuration par Environnement"
+        DEV["Fichier : config.dev.yaml"]
     end
     
-    DEV --> MAIN["🏗️ main.tf"]
+    DEV --> MAIN["Point d'entrée : main.tf"]
     MAIN --> M1 & M2 & M3 & M4 & M5
     
     style MAIN fill:#7B42BC,color:#fff
 ```
 
-- **Reproductibilité** : L'environnement peut être recréé à l'identique en quelques minutes.
-- **Mises en production** : Les déploiements (Infra, Code Python, SQL Dataform) sont 100% automatisés via votre outil CI/CD (validation via `terraform plan` systématique).
+Cette approche déclarative assure :
+- **L'audits de sécurité continus** : Le code est analysé (via `tfsec`) avant chaque déploiement.
+- **La reproductibilité** : L'environnement peut être recréé ou dupliqué (pour de nouveaux environnements) avec une fiabilité totale.
 
 ---
 
-## 6. Observabilité et Alerting
+## 6. Stratégie d'Observabilité et d'Alerting
 
-Même en phase POC, une supervision proactive est configurée pour remonter les anomalies :
+L'environnement intègre une supervision proactive via la suite Google Cloud Operations (Logging et Monitoring) afin de détecter et de qualifier les anomalies techniques ou fonctionnelles.
 
 ```mermaid
 graph TB
-    subgraph "Sources"
-        CR_LOG["⚙️ Cloud Run Logs"]
-        DF_LOG["🔄 Dataform Logs"]
+    subgraph "Génération des Traces"
+        CR_LOG["Logs Applicatifs (Cloud Run)"]
+        DF_LOG["Logs d'Exécution (Dataform)"]
     end
     
     subgraph "Centralisation"
-        SINK["📤 Log Router Sink"]
-        OBS["📊 BQ: observability_logs"]
+        SINK["Log Router"]
+        OBS["BigQuery : Dataset d'Observabilité"]
     end
     
-    subgraph "Alertes Automatiques"
-        A1["🚨 Quarantine Spike"]
-        A2["🚨 Dataform Error"]
+    subgraph "Politiques d'Alerting"
+        A1["Alerte : Rejet en Quarantaine"]
+        A2["Alerte : Échec de transformation SQL"]
     end
     
     CR_LOG & DF_LOG --> SINK --> OBS
@@ -243,34 +218,39 @@ graph TB
     style A2 fill:#C91432,color:#fff
 ```
 
-| Type d'Alerte | Cause Principale | Action requise |
+| Catégorie d'Anomalie | Cause Fonctionnelle Typique | Action Opérationnelle Requise |
 |:--------------|:-----------------|:---------------|
-| **Quarantine Spike** | Un fichier source a échoué à la validation YAML. | Vérifier le format du fichier déposé. |
-| **Dataform Error** | Échec d'un test qualité (doublon, valeur nulle inattendue). | Analyser la requête SQL en erreur. |
+| **Rejet en Quarantaine** | Le format du fichier reçu diverge du contrat de données défini (ex: changement de séparateur, colonne manquante). | Investigation du fichier déposé et concertation avec le fournisseur de données. |
+| **Échec Dataform** | Les règles de qualité métier (Quality Gates) n'ont pas été respectées (ex: violation d'unicité, valeur aberrante). | Analyse de la requête SQL en erreur au sein de l'interface Dataform. |
 
 ---
 
-## 7. Synthèse et Discussion d'Atelier
+## 7. Synthèse et Checklist de Déploiement
 
-### 7.1. Checklist des Actions Client
+### 7.1. Prérequis Bloquants
 
-Ces actions sont les prérequis bloquants pour démarrer l'implémentation technique du POC.
+Les actions suivantes constituent le chemin critique pour l'initialisation technique du projet.
 
-| Priorité | Action | Responsable |
+| Priorité | Action Requise | Responsabilité |
 |:--------:|:-------|:------------|
-| 🔴 | Créer le **projet GCP POC** (dossier Non-Prod). | Admin GCP Client |
-| 🔴 | Créer les **3 groupes IAM Workspace** (Engineers, Analysts, Business). | Admin Workspace |
-| 🔴 | Valider le **dépôt Git** et l'outil CI/CD (GitHub, GitLab...). | Chef de Projet |
-| 🟡 | Configurer le **Workload Identity (WIF)**. | Admin GCP + Pyl.Tech |
-| 🟡 | Donner lesaccès Git/Workspace à l'équipe Pyl.Tech. | Chef de Projet |
+| **[Critique]** | Instanciation des **2 projets GCP** (Dev, Prod). | Administrateur GCP IDEX |
+| **[Critique]** | Création des **3 groupes de sécurité Workspace** (Engineers, Analysts, Business). | Administrateur Workspace IDEX |
+| **[Critique]** | Validation de l'accès pour l'équipe **Alliance Decideom x PylTech** (Ajout direct des courriels, Whitelist, ou création d'identités externes). | Administrateur IAM IDEX |
+| **[Critique]** | Validation du **référentiel Git** cible et de l'outil CI/CD. | Direction de Projet |
+| **[Important]** | Paramétrage du **Workload Identity Federation (WIF)**. | Administrateur GCP + Architecte Pyl.Tech |
+| **[Important]** | Validation et instanciation de l'environnement de test **Looker**. | Direction de Projet |
 
-### 7.2. Questions Ouvertes
+### 7.2. Sujets à Documenter (Questions Ouvertes)
 
-**Données & Use Cases** :
-- Quels sont les cas d'usage métiers prioritaires à démontrer dans le POC ?
-- Quels sont les formats (CSV, JSONL, Excel ?), volumes et fréquences des fichiers sources ?
-- Les fichiers sources seront-ils déposés manuellement ou via un système automatisé (SFTP, API) ?
+**Sécurité Réseau et Conformité** :
+- Quelle est la politique de sécurité de base d'IDEX concernant les accès cloud (Restrictions par adresse IP, obligation de transit par VPN, usage de VPC Service Controls) ?
+- La fédération d'identités existante est-elle formellement documentée et accessible pour consultation ?
+
+**Données et Cas d'Usage** :
+- Quels sont les cas d'usage métiers prioritaires à démontrer afin de valider la valeur du pilote ?
+- Quels sont les formats exacts, la volumétrie prévisionnelle et la fréquence de rafraîchissement des fichiers sources ?
+- Le dépôt des fichiers sur le Cloud Storage sera-t-il effectué manuellement par les utilisateurs ou via un système de transfert automatisé ?
 
 <div style="color: #208AAE; text-align: right; font-size: 0.9em; font-weight: bold; margin-top: 40px;">
-© Copyright 2026 Pyl.Tech
+Document Confidentiel - © Copyright 2026 Pyl.Tech
 </div>
