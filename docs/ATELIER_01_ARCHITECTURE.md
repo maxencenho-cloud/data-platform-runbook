@@ -11,9 +11,13 @@
 
 L'objectif est de déployer le socle "Secure by Design" et de préparer la gestion des identités. Cela posera des bases saines, notamment pour la sécurité du futur Agent IA.
 
-### 1.1. Modèle d'Organisation et de Projets (Landing Zone)
+### 1.1. Modèle d'Organisation et de Projets (Environnement POC)
 
-GCP structure les ressources de manière hiérarchique. La plateforme s'exécutera dans des Projets GCP isolés de votre production actuelle. Pour partir sur de bonnes bases, nous prévoyons directement deux environnements : **Dev** et **Prod**.
+GCP structure les ressources de manière hiérarchique. L'objectif de cette phase est de **prouver la valeur métier** sur un périmètre restreint (POC). 
+
+La plateforme s'exécutera dans des Projets GCP temporaires, isolés de votre production actuelle. Si le projet se pérennise, une véritable "Landing Zone" d'entreprise sera définie avec vos équipes sécurité, et nous pourrons tout y redéployer proprement. 
+
+Cependant, pour démontrer dès aujourd'hui les avantages d'une plateforme industrielle, nous utilisons d'emblée l'automatisation (Terraform) avec deux environnements de travail : **Dev** et **Prod**.
 
 ```mermaid
 graph TD
