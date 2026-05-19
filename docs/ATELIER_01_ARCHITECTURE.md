@@ -1,7 +1,7 @@
 # Pyl.Tech : Atelier de Lancement - Data Platform (Phase POC)
 
 > **Date** : Mai 2026 | **Auteurs** : Équipe Pyl.Tech
-> *Support synthétique de cadrage technique pour l'atelier 1 (Architecture & Socle).*
+> *Support de cadrage technique pour l'atelier 1 (Architecture & Socle).*
 
 ---
 
@@ -27,6 +27,8 @@ Nous appliquons une séparation stricte entre les accès humains (Groupes) et le
 
 ### 2.1. Les Groupes Humains (Google Workspace)
 
+L'avantage de votre environnement est que les groupes créés dans la console d'administration Workspace sont nativement reconnus par GCP IAM.
+
 *Action requise : Créer ces 3 groupes dans votre console admin Workspace.*
 
 | Groupe Workspace | Périmètre d'Accès GCP |
@@ -37,18 +39,32 @@ Nous appliquons une séparation stricte entre les accès humains (Groupes) et le
 
 ### 2.2. Les Comptes de Service (Machines)
 
-Créés automatiquement par notre code Terraform :
+Créés automatiquement par notre code Terraform, ces comptes ne partagent jamais leurs droits :
 - `ingestion-sa` : Écrit dans Cloud Storage (Processing/Quarantine) et BigQuery (Bronze).
 - `terraform-sa` : Déploie l'infrastructure (CI/CD).
 - `dataform-sa` : Exécute les transformations SQLX dans BigQuery.
 
 ---
 
-## 3. Sécurité CI/CD : Approche Zero Trust
+## 3. Sécurité CI/CD : Approche Zero Trust (WIF)
 
 **Règle d'or : Aucune clé JSON statique ne sera exportée ni stockée.**
 
-Nous utilisons **Workload Identity Federation (WIF)** :
+Pour éviter toute fuite de credentials, nous utilisons **Workload Identity Federation (WIF)** :
+
+```mermaid
+sequenceDiagram
+    participant Git as 🐙 Plateforme Git
+    participant WIF as 🔐 Workload Identity
+    participant GCP as ☁️ Google Cloud
+
+    Git->>WIF: Présente un jeton OIDC (courte durée)
+    WIF->>WIF: Vérifie l'origine (repo, branche) cryptographiquement
+    WIF->>GCP: Émet un token d'accès temporaire
+    Git->>GCP: terraform apply (avec token temporaire)
+    Note over Git,GCP: Le token expire après 1h. Aucun secret stocké.
+```
+
 1. Le pipeline CI/CD (ex: GitHub Actions) s'authentifie via OIDC.
 2. GCP vérifie l'identité du dépôt Git cryptographiquement.
 3. GCP émet un jeton éphémère (durée < 1h) pour le déploiement Terraform.
@@ -61,21 +77,32 @@ L'architecture est découpée en deux flux asynchrones et découplés : l'ingest
 
 ### 4.1. Flux d'Ingestion (Event-Driven)
 
+```mermaid
+graph LR
+    SRC["📄 Fichier Source"] --> LAND["🪣 Landing (GCS)"]
+    LAND -->|"Event"| CR["⚙️ Cloud Run (Python)"]
+    CR -->|"Validation OK"| BRZ["🥉 Bronze (BQ)"]
+    CR -->|"Validation KO"| QUA["🪣 Quarantine (GCS)"]
+    
+    style BRZ fill:#cd7f32,color:#fff
+    style QUA fill:#C91432,color:#fff
+```
+
 Dès qu'un fichier source (CSV/JSONL) est déposé sur Cloud Storage :
 1. **Événement Pub/Sub** : Déclenche immédiatement le service d'ingestion (Cloud Run).
 2. **Validation stricte (YAML)** : Vérification du typage et des règles métier.
 3. **All-or-Nothing** : 
    - *Valide (100%)* ➔ Chargement atomique dans la table **Bronze** (BigQuery).
-   - *Invalide (≥ 1 ligne en erreur)* ➔ Rejet du fichier complet en **Quarantaine** (GCS).
+   - *Invalide (≥ 1 ligne en erreur)* ➔ Rejet du fichier complet en **Quarantaine** (GCS). L'entrepôt n'est jamais pollué par des données partielles.
 
 ### 4.2. Flux de Transformation (Dataform)
 
-Orchestration native GCP pour transformer la donnée brute en indicateurs métier.
+Orchestration native GCP pour transformer la donnée brute en indicateurs métier, via du code SQLX synchronisé avec votre dépôt Git.
 
 ```mermaid
 graph LR
-    B["🥉 BRONZE<br/>Brut"] -->|"SQLX (Nettoyage)"| S["🥈 SILVER<br/>Typé/Dédup"]
-    S -->|"SQLX (Agrégation)"| G["🥇 GOLD<br/>KPIs / BI"]
+    B["🥉 BRONZE<br/>Brut"] -->|"SQLX (Nettoyage,<br/>Typage, Dédup)"| S["🥈 SILVER<br/>Clean Data"]
+    S -->|"SQLX (Agrégation,<br/>Jointures métier)"| G["🥇 GOLD<br/>KPIs / BI"]
     
     style B fill:#cd7f32,color:#fff
     style S fill:#c0c0c0,color:#0b132b
@@ -86,7 +113,8 @@ graph LR
 
 ## 5. Pratiques d'Ingénierie (GitOps & Terraform)
 
-L'intégralité du socle (Réseau, Stockage, IAM, Compute) est définie en code Terraform.
+L'intégralité du socle est définie en code Terraform et répartie en modules réutilisables (`storage`, `bigquery`, `ingestion`, `dataform`, `monitoring`).
+
 - **Reproductibilité** : L'environnement peut être recréé à l'identique en quelques minutes.
 - **Contrôle Qualité** : Tout changement passe par un scan de sécurité (`tfsec`) et une validation (`terraform plan`) avant application.
 - **Mises en production** : Les déploiements (Infra, Code Python, SQL Dataform) sont 100% automatisés via votre outil CI/CD.
