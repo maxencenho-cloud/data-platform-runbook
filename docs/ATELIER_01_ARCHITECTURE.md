@@ -41,70 +41,33 @@ graph TD
 
 **Pour le POC** : Un seul projet GCP suffit (ex: `mon-client-poc-data`). Il sera totalement isolé du reste de votre organisation.
 
-### 1.2. Création de l'Organisation GCP (si inexistante)
+### 1.2. L'Organisation GCP (déjà existante via Google Workspace)
 
-Si votre entreprise n'a pas encore d'Organisation GCP, il faut en créer une. L'Organisation est **automatiquement créée** lorsque vous associez un domaine vérifié à GCP via l'un de ces deux services :
+Votre entreprise utilisant déjà **Google Workspace**, une Organisation GCP est <mark style="background-color: #F4BF46; color: #0b132b"><strong>déjà créée automatiquement</strong></mark> et liée à votre domaine. C'est un avantage majeur : pas besoin de configurer Cloud Identity ni de vérifier le domaine.
 
 ```mermaid
-flowchart TD
-    Q{"Avez-vous déjà<br/>Google Workspace ?"}
-    Q -->|"Oui"| WS["✅ Organisation déjà créée<br/>automatiquement via Workspace"]
-    Q -->|"Non"| Q2{"Voulez-vous des emails,<br/>Agenda, Drive Google ?"}
-    Q2 -->|"Oui"| GW["Souscrire à<br/>Google Workspace"]
-    Q2 -->|"Non (juste GCP)"| CI["Créer un compte<br/>Cloud Identity Free"]
+graph LR
+    GW["✅ Google Workspace<br/>(existant)"] -->|"Automatique"| ORG["🏢 Organisation GCP<br/>(déjà active)"]
+    ORG --> FOLDER["📁 Créer un Dossier<br/>Non-Production"]
+    FOLDER --> PROJ["📦 Créer le Projet POC"]
+    PROJ --> GROUPS["👥 Créer les Groupes<br/>(dans Workspace Admin)"]
     
-    GW --> ORG["🏢 Organisation GCP<br/>créée automatiquement"]
-    CI --> ORG
-    WS --> ORG
-    ORG --> PROJ["📦 Créer le Projet POC<br/>sous l'Organisation"]
-    
+    style GW fill:#138636,color:#fff
     style ORG fill:#0b132b,color:#fff
-    style CI fill:#F4BF46,color:#0b132b
-    style WS fill:#138636,color:#fff
+    style PROJ fill:#F4BF46,color:#0b132b
 ```
 
-| Option | Quand la choisir | Coût |
-|:-------|:-----------------|:-----|
-| **Google Workspace** | Vous utilisez déjà (ou souhaitez utiliser) Gmail, Drive, Agenda pour votre entreprise. L'Organisation GCP est créée automatiquement. | À partir de 6€/utilisateur/mois |
-| **Cloud Identity Free** | Vous voulez **uniquement** gérer des identités et accéder à GCP, sans suite bureautique. Parfait pour les entreprises qui utilisent déjà Microsoft 365 ou un autre système de messagerie. | Gratuit (jusqu'à 50 utilisateurs) |
+#### Ce qu'il reste à faire
 
-#### Étapes pour créer une Organisation via Cloud Identity Free
+1. **Vérifier l'Organisation** : Connectez-vous sur [console.cloud.google.com](https://console.cloud.google.com) avec un compte admin Workspace. L'Organisation portant votre nom de domaine doit apparaître dans le sélecteur de ressources en haut à gauche.
 
-1. **Vérifier la propriété de votre domaine** :
-   - Rendez-vous sur [admin.google.com](https://admin.google.com) et démarrez l'inscription Cloud Identity.
-   - Google vous demandera de prouver que vous possédez le domaine `votre-entreprise.com` en ajoutant un enregistrement DNS (TXT ou CNAME) chez votre registrar (OVH, Gandi, Cloudflare, etc.).
+2. **Créer le Projet POC** : Depuis la console, créez un nouveau projet (ex: `idex-poc-data`) sous l'Organisation, idéalement dans un dossier "Non-Production".
 
-2. **Créer le compte Super Admin** :
-   - Un premier compte administrateur est créé lors de l'inscription (ex: `admin@votre-entreprise.com`).
-   - Ce compte aura les droits d'administration totaux sur Cloud Identity ET sur l'Organisation GCP.
+3. **Créer les Groupes dans Google Workspace Admin** : Depuis [admin.google.com](https://admin.google.com) > Annuaire > Groupes, créez les 3 groupes IAM décrits en §2.2 (data-engineers, data-analysts, business-users). Ces groupes Workspace sont directement utilisables dans les droits IAM GCP.
 
-3. **L'Organisation GCP apparaît automatiquement** :
-   - Une fois le domaine vérifié, rendez-vous sur [console.cloud.google.com](https://console.cloud.google.com).
-   - L'Organisation portant le nom de votre domaine apparaît automatiquement dans le sélecteur de ressources.
+4. **Ajouter les membres Pyl.Tech** : Ajoutez les emails de l'équipe Pyl.Tech au groupe `gcp-data-engineers` pour leur donner accès au projet POC.
 
-4. **Créer les utilisateurs et groupes** :
-   - Dans la console d'administration ([admin.google.com](https://admin.google.com)), créez les utilisateurs de votre équipe technique.
-   - Créez les groupes IAM nécessaires (cf. §2.2 de ce document).
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Admin as 👤 Admin Client
-    participant CI as 🔐 Cloud Identity
-    participant DNS as 🌐 Registrar DNS
-    participant GCP as ☁️ Console GCP
-
-    Admin->>CI: Inscription Cloud Identity Free
-    CI->>Admin: Demande vérification domaine
-    Admin->>DNS: Ajout enregistrement TXT
-    DNS-->>CI: Domaine vérifié
-    CI->>GCP: Organisation créée automatiquement
-    Admin->>GCP: Connexion → Organisation visible
-    Admin->>CI: Création utilisateurs et groupes
-    Admin->>GCP: Création du Projet POC sous l'Orga
-```
-
-> **Note importante** : Si votre entreprise possède déjà un annuaire Active Directory / Entra ID (Azure AD), il est possible de synchroniser les utilisateurs vers Cloud Identity via **Google Cloud Directory Sync (GCDS)** ou **Entra ID provisioning**. Cela évite de gérer les identités en double. Cette synchronisation pourra être mise en place lors de la phase d'industrialisation.
+> **Avantage Workspace** : Les groupes créés dans la console d'administration Workspace sont nativement reconnus par GCP IAM. Pas besoin d'outil tiers ni de synchronisation — c'est immédiat.
 
 ### 1.3. Les APIs GCP à Activer
 
