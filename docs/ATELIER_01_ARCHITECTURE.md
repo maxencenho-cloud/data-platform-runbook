@@ -37,7 +37,7 @@ graph TD
     style E fill:#cd7f32,stroke:#cd7f32,color:#fff
 ```
 
-Bonne nouvelle : votre **Organisation GCP** existe déjà et est nativement liée à votre annuaire Google Workspace. Cela va grandement faciliter la gestion des accès.
+Votre **Organisation GCP** existe déjà et est nativement liée à votre annuaire Google Workspace. Cela va grandement faciliter la gestion des accès.
 
 **Actions Requises :**
 1. **Vérifier l'Organisation** : Connectez-vous sur `console.cloud.google.com`. Votre domaine doit apparaître en haut à gauche.
