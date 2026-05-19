@@ -121,6 +121,7 @@ flowchart TB
     SA2 --> CR
     SA3 -->|WIF, pas de clé| GCS
     SA3 -->|WIF, pas de clé| BQ
+    SA4 -->|Exécute les requêtes| BQ
     
     style SA1 fill:#208AAE,stroke:#0b132b,color:#fff
     style SA2 fill:#208AAE,stroke:#0b132b,color:#fff
@@ -133,7 +134,7 @@ flowchart TB
 
 ### 2.2. Les Groupes à Créer (Action Client)
 
-Nous demandons la création de 3 groupes dans votre annuaire (Google Workspace, Active Directory / Entra ID, ou Cloud Identity) :
+Nous demandons la création de 3 groupes dans votre console **Google Workspace Admin** ([admin.google.com](https://admin.google.com) > Annuaire > Groupes) :
 
 | Groupe | Membres | Rôles GCP assignés | Périmètre |
 |:-------|:--------|:-------------------|:----------|
@@ -197,8 +198,8 @@ graph LR
 |:-:|:-------|:------------|:--------|
 | 1 | Créer un projet GCP dédié au POC | Admin GCP Client | Un projet isolé (ex: `mon-client-poc-data`) dans un dossier Non-Production |
 | 2 | Activer les APIs (cf. §1.2) | Admin GCP Client | BigQuery, Cloud Run, Pub/Sub, Storage, Dataform, Secret Manager, IAM |
-| 3 | Créer les 3 groupes IAM (cf. §2.2) | Admin Workspace/AD | `gcp-data-engineers`, `gcp-data-analysts`, `gcp-business-users` |
-| 4 | Ajouter les membres Pyl.Tech au groupe Engineers | Admin Workspace/AD | Emails Pyl.Tech communiqués séparément |
+| 3 | Créer les 3 groupes IAM (cf. §2.2) | Admin Google Workspace | `gcp-data-engineers`, `gcp-data-analysts`, `gcp-business-users` |
+| 4 | Ajouter les membres Pyl.Tech au groupe Engineers | Admin Google Workspace | Emails Pyl.Tech communiqués séparément |
 | 5 | Créer un bucket GCS pour le state Terraform | Admin GCP Client | Ex: `mon-client-poc-tfstate` avec versioning activé |
 | 6 | Configurer le Workload Identity Federation (cf. §3.2) | Admin GCP + Pyl.Tech | Connexion sécurisée entre votre outil de versioning et GCP |
 | 7 | Identifier et communiquer l'outil de versioning | Chef de projet Client | GitHub, GitLab, Azure DevOps, Bitbucket ? |
@@ -573,7 +574,7 @@ graph TB
 | Priorité | Action | Responsable | Deadline suggérée |
 |:--------:|:-------|:------------|:------------------|
 | 🔴 | Créer le projet GCP POC | Admin GCP Client | S+1 |
-| 🔴 | Créer les 3 groupes IAM | Admin Workspace/AD | S+1 |
+| 🔴 | Créer les 3 groupes IAM | Admin Google Workspace | S+1 |
 | 🔴 | Identifier l'outil de versioning | Chef de Projet Client | Immédiat |
 | 🟡 | Créer le dépôt Git et donner accès à Pyl.Tech | Admin Git | S+1 |
 | 🟡 | Configurer le WIF (accompagné par Pyl.Tech) | Admin GCP + Pyl.Tech | S+2 |

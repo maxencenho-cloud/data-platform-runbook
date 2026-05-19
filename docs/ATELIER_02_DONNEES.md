@@ -142,6 +142,11 @@ fields:
     type: float
     nullable: true
     description: "Numeric value associated with the record"
+  - name: record_date
+    type: date
+    format: "%d/%m/%Y"
+    nullable: false
+    description: "Date of the record (e.g., 15/01/2026)"
 ```
 
 ### 3.3. Types Supportés
@@ -152,7 +157,7 @@ fields:
 | `float` | `float` | `FLOAT` | `3.14` |
 | `str` | `str` | `STRING` | `"Paris"` |
 | `bool` | `bool` | `BOOLEAN` | `true` |
-| `date` | `date` | `DATE` | `2026-01-15` |
+| `date` | `date` | `DATE` | `2026-01-15`<br/>*(L'attribut `format: "%d/%m/%Y"` est obligatoire si la date source n'est pas au format ISO `YYYY-MM-DD`)* |
 | `datetime` | `datetime` | `TIMESTAMP` | `2026-01-15T08:30:00Z` |
 
 ### 3.4. Travail à Réaliser en Atelier (par Source)
@@ -328,13 +333,23 @@ landing/<nom_schema>/<nom_fichier>.<extension>
 | `landing/xforce_contrats/contrats_q1.jsonl` | `xforce_contrats` | `schemas/bronze/xforce_contrats.yaml` |
 | `landing/referentiel_sites/sites_v3.csv` | `referentiel_sites` | `schemas/bronze/referentiel_sites.yaml` |
 
-### 5.3. Modes de Chargement dans BigQuery
+### 5.3. Stratégies de Chargement (Ingestion vs Transformation)
 
-| Mode | Comportement | Quand l'utiliser |
-|:-----|:-------------|:-----------------|
-| **Append** | Ajoute les nouvelles lignes à la table existante | Données incrémentales (consos quotidiennes, relevés horaires) |
-| **Replace** | Remplace intégralement la table | Référentiels complets (liste des sites, tarifs) |
-| **Delta / SCD** | Historise les changements (Slowly Changing Dimensions) | Contrats, données clients qui évoluent dans le temps |
+Il est crucial de distinguer comment la donnée brute entre dans le système (Ingestion), et comment elle est gérée dans le temps (Transformation).
+
+**1. À l'Ingestion (Landing → Bronze via Cloud Run) :**
+Le service d'ingestion ne fait aucune logique métier. Il se contente d'insérer les fichiers valides.
+| Mode Cloud Run | Comportement | Quand l'utiliser |
+|:---------------|:-------------|:-----------------|
+| **Append** | Ajoute les nouvelles lignes à la table brute existante | Données incrémentales (consos quotidiennes, relevés horaires) |
+| **Replace** | Écrase et remplace intégralement la table brute | Fichiers référentiels déposés manuellement (liste des sites, tarifs) |
+
+**2. À la Transformation (Bronze → Silver via Dataform) :**
+C'est ici que l'historisation complexe est gérée.
+| Stratégie Dataform | Comportement | Quand l'utiliser |
+|:-------------------|:-------------|:-----------------|
+| **Incremental (SCD / Delta)** | Gère l'historisation (Slowly Changing Dimensions) via un `MERGE` SQL | Contrats, données CRM qui évoluent dans le temps |
+| **Table (Full Refresh)** | Recalcule toute la table métier à chaque exécution | KPIs quotidiens simples, référentiels |
 
 ---
 
