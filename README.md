@@ -17,6 +17,41 @@ The architecture is fundamentally split into two distinct and asynchronous parad
 
 ### 1. Event-Driven Ingestion (Real-time / Micro-batch)
 The ingestion phase is fully decoupled and reactive:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Source
+    participant GCS Landing
+    participant Pub/Sub
+    participant Cloud Run
+    participant GCS Processing
+    participant GCS Staging
+    participant GCS Quarantine
+    participant BQ Bronze
+
+    Source->>GCS Landing: Drop file (e.g., landing/schema/data.csv)
+    GCS Landing-->>Pub/Sub: File creation event
+    Pub/Sub->>Cloud Run: Push trigger
+    Cloud Run->>GCS Processing: Move file (Idempotency)
+    Cloud Run->>Cloud Run: Fetch Schema & Validate
+    alt Validation Failed
+        Cloud Run->>GCS Quarantine: Move file
+    else Validation Success
+        Cloud Run->>GCS Staging: Write to Staging with UUID
+        Cloud Run->>BQ Bronze: BQ Load Job
+        alt BQ Load Success
+            BQ Bronze-->>Cloud Run: Success
+            Cloud Run->>GCS Staging: Delete file
+            Cloud Run->>GCS Processing: Delete file
+        else BQ Load Error
+            Cloud Run->>GCS Quarantine: Copy file
+            Cloud Run->>GCS Staging: Delete file
+            Cloud Run->>GCS Processing: Delete file
+        end
+    end
+```
+
 1. **GCS Landing**: A file (CSV or JSONL) lands in the `landing` bucket. Files should include the target schema in their path (e.g., `landing/<schema_name>/data.csv`). If dropped at the root, the service falls back to extracting the schema name strictly by taking the substring before the first period (e.g., `data.csv` -> `data`). [assumption: root-level files perfectly match schema names without date suffixes].
 2. **Pub/Sub Notification**: Cloud Storage natively generates an event to a Pub/Sub topic.
 3. **Cloud Run**: The Python service (deployed on Cloud Run) is triggered by a Pub/Sub push. It dynamically fetches the corresponding YAML schema definition from the `SCHEMA_BUCKET` via the GCS API before parsing the data. (Schemas are synced from the `schemas/` repository folder to this bucket via CI/CD).
@@ -28,6 +63,36 @@ The ingestion phase is fully decoupled and reactive:
 
 ### 2. Batch Transformation (Git-Synced)
 Business transformations are not tied to the ingestion of a specific file but run globally:
+
+```mermaid
+graph LR
+    subgraph Orchestration
+        Git[🐙 GitHub Repo]
+        Release[⏱️ Release Config]
+        Workflow[⚙️ Workflow Config]
+    end
+    
+    subgraph GCP Dataform
+        DF_Compile[🔄 Compile SQLX]
+        DF_Exec[▶️ Execute Graph]
+    end
+    
+    subgraph BigQuery Layers
+        Bronze[(🥉 Bronze Layer)]
+        Silver[(🥈 Silver Layer)]
+        Gold[(🥇 Gold Layer)]
+    end
+
+    Git -->|Git Sync| DF_Compile
+    Release -->|Daily at 01:00| DF_Compile
+    Workflow -->|Nightly at 02:00| DF_Exec
+    DF_Compile -.->|Compiled Code| DF_Exec
+    
+    DF_Exec --> Bronze
+    Bronze -->|Cleansing & Standardization| Silver
+    Silver -->|Aggregation & Business Logic| Gold
+```
+
 1. **Git Sync**: GCP Dataform natively pulls the SQLX code from the GitHub repository (via a Secret Manager token).
 2. **Release Config**: A `daily-release` compiles the latest `main` branch code every day at 01:00 UTC.
 3. **Workflow Config**: A `nightly-workflow` executes the compiled release every day at 02:00 UTC.
