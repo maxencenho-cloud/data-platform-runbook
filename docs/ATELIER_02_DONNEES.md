@@ -13,20 +13,74 @@
 
 Pour mémoire, voici le flux technique validé lors de l'Atelier 1 :
 
-```mermaid
-graph LR
-    SRC["Système Source"] -->|"Dépôt Fichier (CSV/XML/JSON)"| LAND["Zone Landing (Cloud Storage)"]
-    LAND -->|"Événement"| CR["Service d'Ingestion (Cloud Run)"]
-    CR -->|"Validation conforme"| BRZ["Couche Bronze (BigQuery)"]
-    CR -->|"Validation en échec"| QUA["Zone Quarantaine (Cloud Storage)"]
-    BRZ -->|"Transformation SQL"| SLV["Couche Silver (BigQuery)"]
-    SLV -->|"Agrégation SQL"| GLD["Couche Gold (BigQuery)"]
-    GLD --> BI["Plateforme BI (Looker)"]
-    
-    style BRZ fill:#cd7f32,color:#fff
-    style SLV fill:#c0c0c0,color:#0b132b
-    style GLD fill:#F4BF46,color:#0b132b
-```
+<table style="width: 100%; border-collapse: collapse; font-family: 'Poppins', sans-serif; font-size: 9.5pt; margin: 20px 0; border: 1px solid #eeeeee; text-align: center;">
+  <tr style="background-color: #0b132b; color: #ffffff; font-weight: bold;">
+    <th colspan="7" style="padding: 10px; border: 1px solid #eeeeee;">Flux de Données de Bout en Bout</th>
+  </tr>
+  <tr style="vertical-align: middle;">
+    <!-- Step 1 -->
+    <td style="width: 22%; padding: 12px; border: 1px solid #eeeeee; background-color: #ffffff;">
+      <div style="font-weight: bold; color: #0b132b;">Système Source</div>
+      <div style="font-size: 8pt; color: #4f4f4f; margin-top: 4px;">EnergX / XForce<br/>(CSV / XML / JSON)</div>
+    </td>
+    <!-- Arrow -->
+    <td style="width: 4%; padding: 4px; border: 1px solid #eeeeee; background-color: #fdfaf2; color: #208AAE; font-weight: bold; font-size: 12pt;">
+      &rarr;
+    </td>
+    <!-- Step 2 -->
+    <td style="width: 22%; padding: 12px; border: 1px solid #eeeeee; background-color: #ffffff;">
+      <div style="font-weight: bold; color: #0b132b;">Zone Landing</div>
+      <div style="font-size: 8pt; color: #4f4f4f; margin-top: 4px;">Cloud Storage<br/>(Dépôt initial)</div>
+    </td>
+    <!-- Arrow -->
+    <td style="width: 4%; padding: 4px; border: 1px solid #eeeeee; background-color: #fdfaf2; color: #208AAE; font-weight: bold; font-size: 12pt;">
+      &rarr;
+    </td>
+    <!-- Step 3 (Validation) -->
+    <td style="width: 26%; padding: 12px; border: 1px solid #eeeeee; background-color: #ffffff;">
+      <div style="font-weight: bold; color: #0b132b;">Ingestion Cloud Run</div>
+      <div style="font-size: 8pt; color: #4f4f4f; margin-top: 4px; font-style: italic;">Validation par Data Contracts</div>
+      
+      <!-- Rejection split -->
+      <table style="width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 8pt;">
+        <tr>
+          <td style="background-color: #138636; color: #ffffff; padding: 4px; border-radius: 2px; width: 48%; font-weight: bold;">Valide &darr;</td>
+          <td style="width: 4%;"></td>
+          <td style="background-color: #C91432; color: #ffffff; padding: 4px; border-radius: 2px; width: 48%; font-weight: bold;">Erreur &rarr;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td></td>
+          <td style="padding: 2px; background-color: #eeeeee; color: #C91432; font-weight: bold;">Quarantaine</td>
+        </tr>
+      </table>
+    </td>
+    <!-- Arrow -->
+    <td style="width: 4%; padding: 4px; border: 1px solid #eeeeee; background-color: #fdfaf2; color: #208AAE; font-weight: bold; font-size: 12pt;">
+      &rarr;
+    </td>
+    <!-- Step 4 (Medallion & Looker) -->
+    <td style="width: 18%; padding: 12px; border: 1px solid #eeeeee; background-color: #ffffff;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt; text-align: left;">
+        <tr>
+          <td style="background-color: #cd7f32; color: #ffffff; padding: 4px; font-weight: bold; text-align: center; border-radius: 2px;">Bronze (Brute)</td>
+        </tr>
+        <tr><td style="text-align: center; color: #208AAE; padding: 1px;">&darr;</td></tr>
+        <tr>
+          <td style="background-color: #c0c0c0; color: #0b132b; padding: 4px; font-weight: bold; text-align: center; border-radius: 2px;">Silver (Propre)</td>
+        </tr>
+        <tr><td style="text-align: center; color: #208AAE; padding: 1px;">&darr;</td></tr>
+        <tr>
+          <td style="background-color: #F4BF46; color: #0b132b; padding: 4px; font-weight: bold; text-align: center; border-radius: 2px;">Gold (KPIs)</td>
+        </tr>
+        <tr><td style="text-align: center; color: #208AAE; padding: 1px;">&darr;</td></tr>
+        <tr>
+          <td style="background-color: #208AAE; color: #ffffff; padding: 4px; font-weight: bold; text-align: center; border-radius: 2px;">Looker (BI)</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
 
 **Rappel du principe "All-or-Nothing" (Circuit Breaker)** : Chaque fichier est validé de bout en bout. Si une seule anomalie de structure ou de type est détectée, le fichier entier part en Quarantaine. Aucune donnée partielle ou corrompue n'entre dans l'entrepôt.
 
@@ -36,18 +90,38 @@ graph LR
 
 Pour ce POC, nous nous concentrons sur les deux systèmes métiers centraux :
 
-```mermaid
-mindmap
-  root((Sources IDEX))
-    Systèmes Métier
-      EnergX
-        Données techniques
-        Consommations
-        Productions
-      XForce
-        Contrats
-        CRM clients
-```
+<table style="width: 100%; border-collapse: collapse; font-family: 'Poppins', sans-serif; font-size: 10pt; margin: 20px 0; border: 1px solid #eeeeee;">
+  <tr style="background-color: #0b132b; color: #ffffff; font-weight: bold; text-align: center;">
+    <th colspan="2" style="padding: 10px; border: 1px solid #eeeeee;">Cartographie des Sources de Données IDEX</th>
+  </tr>
+  <tr style="vertical-align: top;">
+    <!-- System 1: EnergX -->
+    <td style="width: 50%; padding: 15px; border: 1px solid #eeeeee; background-color: #ffffff;">
+      <div style="padding: 8px; background-color: #F4BF46; color: #0b132b; font-weight: bold; text-align: center; border-radius: 4px; margin-bottom: 10px;">
+        EnergX (Système Technique)
+      </div>
+      <div style="color: #4f4f4f;">
+        <ul style="margin: 0; padding-left: 20px; list-style-type: square;">
+          <li style="margin-bottom: 6px;"><b>Données techniques</b> : Spécifications et statuts des équipements.</li>
+          <li style="margin-bottom: 6px;"><b>Consommations</b> : Historiques et relevés d'énergie consommée.</li>
+          <li style="margin-bottom: 6px;"><b>Productions</b> : Mesures de l'énergie produite par les centrales.</li>
+        </ul>
+      </div>
+    </td>
+    <!-- System 2: XForce -->
+    <td style="width: 50%; padding: 15px; border: 1px solid #eeeeee; background-color: #ffffff;">
+      <div style="padding: 8px; background-color: #0d2149; color: #ffffff; font-weight: bold; text-align: center; border-radius: 4px; margin-bottom: 10px;">
+        XForce (CRM / Référentiel Contrats)
+      </div>
+      <div style="color: #4f4f4f;">
+        <ul style="margin: 0; padding-left: 20px; list-style-type: square;">
+          <li style="margin-bottom: 6px;"><b>Contrats</b> : Tarifs, conditions d'engagement et renouvellements.</li>
+          <li style="margin-bottom: 6px;"><b>CRM Clients</b> : Fiches d'identité clients, comptes et interlocuteurs.</li>
+        </ul>
+      </div>
+    </td>
+  </tr>
+</table>
 
 ### 2.1. Spécifications des Sources
 
@@ -66,24 +140,63 @@ Pour protéger la plateforme, chaque flux de données respecte un **Contrat de D
 
 ### 3.1. Séquence de Validation
 
-```mermaid
-sequenceDiagram
-    participant F as Fichier d'Extraction
-    participant S as Contrat de Données (YAML)
-    participant CR as Service d'Ingestion
-    participant BQ as Entrepôt BigQuery
-
-    F->>CR: Réception du fichier dans la zone de transit (Landing)
-    CR->>S: Analyse du contrat de schéma correspondant
-    S-->>CR: Renvoi des règles (Colonnes, Types de données, Nullabilité)
-    CR->>CR: Validation stricte ligne par ligne
-    
-    alt Le fichier respecte 100% du contrat
-        CR->>BQ: Chargement atomique dans la Couche Bronze
-    else Une ou plusieurs violations du contrat
-        CR->>CR: Rejet global du fichier en Zone de Quarantaine
-    end
-```
+<table style="width: 100%; border-collapse: collapse; font-family: 'Poppins', sans-serif; font-size: 10pt; margin: 20px 0; border: 1px solid #eeeeee;">
+  <thead>
+    <tr style="background-color: #0b132b; color: #ffffff; font-weight: bold; text-align: left;">
+      <th style="padding: 10px; border: 1px solid #eeeeee; width: 8%; text-align: center;">Étape</th>
+      <th style="padding: 10px; border: 1px solid #eeeeee; width: 25%;">Source / Acteur</th>
+      <th style="padding: 10px; border: 1px solid #eeeeee; width: 10%; text-align: center;">Flux</th>
+      <th style="padding: 10px; border: 1px solid #eeeeee; width: 25%;">Cible / Acteur</th>
+      <th style="padding: 10px; border: 1px solid #eeeeee;">Action de Validation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #eeeeee;">1</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Fichier d'Extraction</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #208AAE; font-weight: bold;">&rarr;</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Service d'Ingestion</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; color: #4f4f4f;">Réception du fichier brut dans l'espace de stockage temporaire (Landing Zone).</td>
+    </tr>
+    <tr style="background-color: #fdfaf2;">
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #F4BF46; color: #0b132b;">2</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Service d'Ingestion</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #F4BF46; font-weight: bold;">&rarr;</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Contrat de Données (YAML)</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; color: #4f4f4f;">Requête d'analyse pour charger les schémas de validation officiels.</td>
+    </tr>
+    <tr>
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #eeeeee;">3</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Contrat de Données (YAML)</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #208AAE; font-weight: bold;">&larr;</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Service d'Ingestion</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; color: #4f4f4f;">Retour des règles : noms des colonnes, types stricts, nullabilité et clés.</td>
+    </tr>
+    <tr style="background-color: #fdfaf2;">
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #F4BF46; color: #0b132b;">4</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Service d'Ingestion</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #F4BF46; font-weight: bold;">&olarr;</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Service d'Ingestion</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; color: #4f4f4f;"><b>Validation Circuit Breaker</b> : Analyse ligne par ligne du fichier.</td>
+    </tr>
+    <!-- Scenario A -->
+    <tr style="background-color: #edf7ed;">
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #138636; color: #ffffff;">5A</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #138636;">Service d'Ingestion</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #138636; font-weight: bold;">&rarr;</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Entrepôt BigQuery</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; color: #138636;"><b>Cas 100% conforme</b> : Chargement immédiat et atomique dans la <b>Couche Bronze</b>.</td>
+    </tr>
+    <!-- Scenario B -->
+    <tr style="background-color: #fdf2f2;">
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #C91432; color: #ffffff;">5B</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #C91432;">Service d'Ingestion</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #C91432; font-weight: bold;">&rarr;</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Zone de Quarantaine</td>
+      <td style="padding: 10px; border: 1px solid #eeeeee; color: #C91432;"><b>Cas non conforme</b> : Rejet global immédiat du fichier vers la <b>Quarantaine (Cloud Storage)</b>.</td>
+    </tr>
+  </tbody>
+</table>
 
 ### 3.2. Types de Données Supportés
 
