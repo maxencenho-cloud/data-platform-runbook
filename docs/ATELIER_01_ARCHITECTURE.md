@@ -19,39 +19,15 @@ La plateforme s'exécutera dans des Projets GCP temporaires, isolés de votre pr
 
 Cependant, pour démontrer dès aujourd'hui les avantages d'une plateforme industrielle, nous utilisons d'emblée l'automatisation (Terraform) avec deux environnements de travail : **Dev** et **Prod**.
 
-<table style="width: 100%; border-collapse: collapse; font-family: 'Poppins', sans-serif; font-size: 10pt; margin: 20px 0; border: 1px solid #eeeeee;">
-  <tr style="background-color: #0b132b; color: #ffffff; font-weight: bold; text-align: center;">
-    <th colspan="4" style="padding: 12px; border: 1px solid #eeeeee;">Organisation GCP (votre-domaine.com)</th>
-  </tr>
-  <tr style="text-align: center; font-weight: bold;">
-    <td colspan="2" style="width: 50%; padding: 10px; background-color: #eeeeee; border: 1px solid #eeeeee; color: #0b132b;">Dossier : Non-Production (&darr;)</td>
-    <td colspan="2" style="width: 50%; padding: 10px; background-color: #eeeeee; border: 1px solid #eeeeee; color: #0b132b;">Dossier : Production (&darr;)</td>
-  </tr>
-  <tr style="text-align: center;">
-    <td colspan="2" style="padding: 10px; background-color: #F4BF46; color: #0b132b; font-weight: bold; border: 1px solid #eeeeee;">Projet GCP : idex-data-dev</td>
-    <td colspan="2" style="padding: 10px; background-color: #0d2149; color: #ffffff; font-weight: bold; border: 1px solid #eeeeee;">Projet GCP : idex-data-prod</td>
-  </tr>
-  <tr style="vertical-align: top;">
-    <td colspan="2" style="padding: 12px; background-color: #ffffff; border: 1px solid #eeeeee; color: #4f4f4f;">
-      <div style="font-weight: bold; color: #0b132b; margin-bottom: 6px; text-align: center;">Ressources POC & Dev :</div>
-      <ul style="margin: 0; padding-left: 20px; list-style-type: square;">
-        <li><b>Cloud Storage</b> (Stockage brut)</li>
-        <li><b>BigQuery</b> (Entrepôt de données)</li>
-        <li><b>Cloud Run</b> (Calcul Serverless)</li>
-        <li><b>Dataform</b> (Orchestration SQL)</li>
-      </ul>
-    </td>
-    <td colspan="2" style="padding: 12px; background-color: #ffffff; border: 1px solid #eeeeee; color: #4f4f4f;">
-      <div style="font-weight: bold; color: #0b132b; margin-bottom: 6px; text-align: center;">Ressources Cibles Prod :</div>
-      <ul style="margin: 0; padding-left: 20px; list-style-type: square;">
-        <li><b>Cloud Storage</b> (Production)</li>
-        <li><b>BigQuery</b> (Production)</li>
-        <li><b>Cloud Run</b> (Production)</li>
-        <li><b>Dataform</b> (Production)</li>
-      </ul>
-    </td>
-  </tr>
-</table>
+* 🏢 **Organisation GCP** (`votre-domaine.com`)
+  * ├── 📁 **Dossier : Non-Production**
+  │   └── ⚙️ **Projet GCP : `idex-data-dev`** *(POC & Environnement Dev)*
+  │       ├── 📦 **Cloud Storage** (Stockage brut, Landing & Quarantine)
+  │       ├── 📊 **BigQuery** (Bronze, Silver, Gold - Entrepôt de données)
+  │       ├── ⚡ **Cloud Run** (Calcul Serverless d'ingestion)
+  │       └── 🔄 **Dataform** (Orchestration & Transformations SQL)
+  * └── 📁 **Dossier : Production**
+      └── ⚙️ **Projet GCP : `idex-data-prod`** *(Production cible répliquée)*
 
 Votre **Organisation GCP** existe déjà et est nativement liée à votre annuaire Google Workspace. Cela va grandement faciliter la gestion des accès.
 
@@ -111,52 +87,14 @@ Les clés statiques sont la principale cause de failles de sécurité dans le Cl
 
 Ce standard permet à votre outil Git de s'authentifier auprès de GCP de manière sécurisée et éphémère, sans utiliser de mot de passe.
 
-<table style="width: 100%; border-collapse: collapse; font-family: 'Poppins', sans-serif; font-size: 10pt; margin: 20px 0; border: 1px solid #eeeeee;">
-  <thead>
-    <tr style="background-color: #0b132b; color: #ffffff; font-weight: bold; text-align: left;">
-      <th style="padding: 10px; border: 1px solid #eeeeee; width: 8%; text-align: center;">Étape</th>
-      <th style="padding: 10px; border: 1px solid #eeeeee; width: 25%;">Émetteur</th>
-      <th style="padding: 10px; border: 1px solid #eeeeee; width: 10%; text-align: center;">Flux</th>
-      <th style="padding: 10px; border: 1px solid #eeeeee; width: 25%;">Destinataire</th>
-      <th style="padding: 10px; border: 1px solid #eeeeee;">Description / Action de Sécurité</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #eeeeee;">1</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Plateforme Git (Pipeline CI/CD)</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #208AAE; font-weight: bold;">&rarr;</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Workload Identity Pool (GCP)</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; color: #4f4f4f;">Présentation d'un jeton OIDC (courte durée) généré dynamiquement par le runner Git.</td>
-    </tr>
-    <tr style="background-color: #fdfaf2;">
-      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #F4BF46; color: #0b132b;">2</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Workload Identity Pool (GCP)</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #F4BF46; font-weight: bold;">&olarr;</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Workload Identity Pool (GCP)</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; color: #4f4f4f;"><b>Auto-vérification</b> : Contrôle de la signature cryptographique du jeton et validation de l'identité du dépôt source.</td>
-    </tr>
-    <tr>
-      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #eeeeee;">3</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Workload Identity Pool (GCP)</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #208AAE; font-weight: bold;">&rarr;</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Ressources GCP cibles</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; color: #4f4f4f;">Émission d'un token d'accès temporaire lié au Service Account Terraform (valide 1h max).</td>
-    </tr>
-    <tr style="background-color: #fdfaf2;">
-      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-weight: bold; background-color: #F4BF46; color: #0b132b;">4</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Plateforme Git (Pipeline CI/CD)</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; text-align: center; color: #F4BF46; font-weight: bold;">&rarr;</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; font-weight: bold; color: #0b132b;">Ressources GCP cibles</td>
-      <td style="padding: 10px; border: 1px solid #eeeeee; color: #4f4f4f;">Exécution du déploiement via <code>terraform apply</code> avec l'identité temporaire validée.</td>
-    </tr>
-    <tr style="background-color: #0b132b; color: #ffffff;">
-      <td colspan="5" style="padding: 10px; border: 1px solid #eeeeee; text-align: center; font-style: italic;">
-        💡 <b>Note de Sécurité</b> : Le token expire automatiquement après 1 heure maximum. Aucun secret persistant n'existe.
-      </td>
-    </tr>
-  </tbody>
-</table>
+| Étape | Acteur Source | Flux | Acteur Cible | Action / Règle de Sécurité |
+| :---: | :--- | :---: | :--- | :--- |
+| **1** | **Plateforme Git** *(Runner CI/CD)* | `→` | **Workload Identity Pool** *(GCP)* | Présentation d'un jeton OIDC de courte durée généré à la volée. |
+| **2** | **Workload Identity Pool** | `↺` | **Workload Identity Pool** | **Vérification** : Contrôle cryptographique de l'identité du dépôt et de la branche. |
+| **3** | **Workload Identity Pool** | `→` | **Ressources GCP cibles** | Émission d'un jeton d'accès temporaire lié au Service Account Terraform. |
+| **4** | **Plateforme Git** | `→` | **Ressources GCP cibles** | Exécution sécurisée des commandes de déploiement (`terraform apply`). |
+
+> 💡 **Note de sécurité** : Le token expire automatiquement après 1 heure maximum. Aucun secret persistant ni clé JSON n'est stocké ou exporté.
 
 **Actions Requises :**
 1. Validation de l'outil de versioning (GitLab, GitHub, etc.) qui hébergera le code source.
@@ -168,84 +106,23 @@ Ce standard permet à votre outil Git de s'authentifier auprès de GCP de maniè
 
 L'architecture est découpée en deux flux asynchrones et découplés : l'Ingestion (Event-Driven) et la Transformation (Batch Medallion).
 
-<table style="width: 100%; border-collapse: collapse; font-family: 'Poppins', sans-serif; font-size: 9.5pt; margin: 20px 0; border: 1px solid #eeeeee;">
-  <tr style="background-color: #0b132b; color: #ffffff; font-weight: bold; text-align: center;">
-    <th style="width: 45%; padding: 12px; border: 1px solid #eeeeee;">1. Ingestion Event-Driven</th>
-    <th style="width: 10%; padding: 12px; border: 1px solid #eeeeee;">Flux</th>
-    <th style="width: 45%; padding: 12px; border: 1px solid #eeeeee;">2. Transformation Batch & 3. Restitution</th>
-  </tr>
-  <tr style="vertical-align: top;">
-    <!-- Column 1: Ingestion -->
-    <td style="padding: 12px; border: 1px solid #eeeeee; background-color: #ffffff;">
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 8px; background-color: #eeeeee; border: 1px solid #cccccc; border-radius: 4px; text-align: center; font-weight: bold; color: #0b132b;">Fichiers Sources</td>
-        </tr>
-        <tr><td style="text-align: center; color: #208AAE; padding: 4px;">&darr; (Dépôt)</td></tr>
-        <tr>
-          <td style="padding: 8px; background-color: #eeeeee; border: 1px solid #cccccc; border-radius: 4px; text-align: center; color: #0b132b;">
-            <b>Zone Landing</b><br/><small>(Cloud Storage)</small>
-          </td>
-        </tr>
-        <tr><td style="text-align: center; color: #208AAE; padding: 4px;">&darr; (Événement Pub/Sub)</td></tr>
-        <tr>
-          <td style="padding: 8px; background-color: #0d2149; border: 1px solid #0d2149; border-radius: 4px; text-align: center; color: #ffffff;">
-            <b>Service d'Ingestion</b><br/><small>(Cloud Run)</small>
-          </td>
-        </tr>
-        <tr><td style="text-align: center; color: #208AAE; padding: 4px;">&darr; (Validation du Contrat)</td></tr>
-        <tr>
-          <td>
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="width: 48%; padding: 8px; background-color: #138636; border: 1px solid #138636; border-radius: 4px; text-align: center; color: #ffffff; font-weight: bold;">
-                  Validation OK &rarr;<br/><span style="font-size: 8pt; font-weight: normal;">Zone Staging & Bronze (BigQuery)</span>
-                </td>
-                <td style="width: 4%;"></td>
-                <td style="width: 48%; padding: 8px; background-color: #C91432; border: 1px solid #C91432; border-radius: 4px; text-align: center; color: #ffffff; font-weight: bold;">
-                  Validation KO &rarr;<br/><span style="font-size: 8pt; font-weight: normal;">Zone Quarantaine (Cloud Storage)</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </td>
-    <!-- Column 2: Transition Arrow -->
-    <td style="padding: 12px; border: 1px solid #eeeeee; background-color: #fdfaf2; text-align: center; vertical-align: middle; font-weight: bold; color: #208AAE;">
-      <div style="font-size: 16pt;">&rArr;</div>
-      <div style="font-size: 8pt; color: #4f4f4f; margin-top: 5px;">Chargement Bronze</div>
-    </td>
-    <!-- Column 3: Transformation & Restitution -->
-    <td style="padding: 12px; border: 1px solid #eeeeee; background-color: #ffffff;">
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 8px; background-color: #cd7f32; border: 1px solid #cd7f32; border-radius: 4px; text-align: center; color: #ffffff; font-weight: bold;">
-            Couche Bronze (BigQuery)<br/><small>Données brutes historisées</small>
-          </td>
-        </tr>
-        <tr><td style="text-align: center; color: #208AAE; padding: 4px;">&darr; (Orchestration Dataform)</td></tr>
-        <tr>
-          <td style="padding: 8px; background-color: #c0c0c0; border: 1px solid #999999; border-radius: 4px; text-align: center; color: #0b132b; font-weight: bold;">
-            Couche Silver (BigQuery)<br/><small>Nettoyée, typée et dédupliquée</small>
-          </td>
-        </tr>
-        <tr><td style="text-align: center; color: #208AAE; padding: 4px;">&darr; (Agrégation Métier)</td></tr>
-        <tr>
-          <td style="padding: 8px; background-color: #F4BF46; border: 1px solid #F4BF46; border-radius: 4px; text-align: center; color: #0b132b; font-weight: bold;">
-            Couche Gold (BigQuery)<br/><small>Indicateurs agrégés (Data Marts)</small>
-          </td>
-        </tr>
-        <tr><td style="text-align: center; color: #208AAE; padding: 4px;">&darr; (Visualisation)</td></tr>
-        <tr>
-          <td style="padding: 8px; background-color: #208AAE; border: 1px solid #208AAE; border-radius: 4px; text-align: center; color: #ffffff; font-weight: bold;">
-            Looker (BI Platform)<br/><small>Tableaux de bord & Reporting</small>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
+#### 4.1. Flux d'Ingestion (Event-Driven)
+* 📥 **Fichiers Sources** 
+  * ➔ 📦 **Zone Landing** *(Cloud Storage)* 
+    * ➔ 🔔 **Bus d'Événements** *(Pub/Sub)* 
+      * ➔ ⚡ **Service d'Ingestion** *(Cloud Run)*
+        * ├── **Validation Réussie (100%)** ➔ 🟢 **Zone Staging** *(GCS)* ➔ 📊 **Bronze (BigQuery)**
+        * └── **Échec de Validation** ➔ 🔴 **Zone Quarantaine** *(GCS)* *(Fichier rejeté en intégralité)*
+
+#### 4.2. Flux de Transformation (Batch Medallion)
+* 📊 **Bronze (BigQuery)** *(Données brutes)*
+  * ➔ 🔄 **Orchestrateur Dataform** *(Nettoyage & Dédoublonnage)* 
+    * ➔ ⚙️ **Silver (BigQuery)** *(Données propres et typées)*
+      * ➔ 🔄 **Orchestrateur Dataform** *(Agrégations Métiers)*
+        * ➔ 🏆 **Gold (BigQuery)** *(Indicateurs agrégés)*
+
+#### 4.3. Restitution
+* 🏆 **Gold (BigQuery)** ➔ 📊 **Looker** *(Visualisations & Tableaux de bord)*
 
 ### 4.1. Flux d'Ingestion ("Circuit Breaker")
 
@@ -268,44 +145,14 @@ Dataform orchestre la transformation de la donnée brute en indicateurs métiers
 
 L'intégralité du socle technique (Réseau, Stockage, IAM, Traitements) est provisionnée via du code Terraform.
 
-<table style="width: 100%; border-collapse: collapse; font-family: 'Poppins', sans-serif; font-size: 10pt; margin: 20px 0; border: 1px solid #eeeeee;">
-  <tr style="background-color: #0b132b; color: #ffffff; font-weight: bold; text-align: center;">
-    <th colspan="3" style="padding: 10px; border: 1px solid #eeeeee;">Architecture de l'Infrastructure as Code (Terraform)</th>
-  </tr>
-  <tr style="vertical-align: middle; text-align: center;">
-    <!-- Inputs / Config -->
-    <td style="width: 30%; padding: 15px; border: 1px solid #eeeeee; background-color: #fdfaf2;">
-      <div style="font-weight: bold; color: #0b132b;">1. Paramètres par Env</div>
-      <div style="margin-top: 8px; padding: 10px; background-color: #ffffff; border: 1px dashed #F4BF46; border-radius: 4px;">
-        <code>config.dev.yaml</code><br/>
-        <code>config.prod.yaml</code>
-      </div>
-      <small style="display: block; margin-top: 8px; color: #4f4f4f;">Définit les variables propres à chaque environnement.</small>
-    </td>
-    <!-- Arrow -->
-    <td style="width: 8%; padding: 10px; border: 1px solid #eeeeee; background-color: #ffffff; font-size: 14pt; color: #208AAE; font-weight: bold;">
-      &rarr;
-    </td>
-    <!-- Main Orchestration -->
-    <td style="width: 62%; padding: 15px; border: 1px solid #eeeeee; background-color: #ffffff;">
-      <div style="font-weight: bold; color: #0b132b; margin-bottom: 10px;">2. Orchestration Principal (<code>main.tf</code>)</div>
-      <div style="background-color: #0b132b; color: #ffffff; padding: 10px; border-radius: 4px; font-weight: bold; margin-bottom: 10px;">
-        Point d'entrée : Modules Terraform instanciés
-      </div>
-      <div style="font-size: 12pt; color: #208AAE; font-weight: bold; margin-bottom: 8px;">&darr;</div>
-      <div style="font-weight: bold; color: #0b132b; margin-bottom: 6px;">3. Modules Réutilisables de Pyl.Tech :</div>
-      <table style="width: 100%; border-collapse: collapse; font-size: 9pt;">
-        <tr>
-          <td style="padding: 6px; border: 1px solid #eeeeee; background-color: #eeeeee; text-align: center; width: 20%; color: #0b132b; font-weight: bold;">storage</td>
-          <td style="padding: 6px; border: 1px solid #eeeeee; background-color: #eeeeee; text-align: center; width: 20%; color: #0b132b; font-weight: bold;">bigquery</td>
-          <td style="padding: 6px; border: 1px solid #eeeeee; background-color: #eeeeee; text-align: center; width: 20%; color: #0b132b; font-weight: bold;">ingestion</td>
-          <td style="padding: 6px; border: 1px solid #eeeeee; background-color: #eeeeee; text-align: center; width: 20%; color: #0b132b; font-weight: bold;">dataform</td>
-          <td style="padding: 6px; border: 1px solid #eeeeee; background-color: #eeeeee; text-align: center; width: 20%; color: #0b132b; font-weight: bold;">monitoring</td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
+* ⚙️ **Point d'entrée Terraform (`main.tf`)**
+  * ├── 📝 **Variables par environnement** (`config.dev.yaml` / `config.prod.yaml`)
+  * └── 📦 **Modules Réutilisables Pyl.Tech**
+      ├── 📂 `storage` (Provisionnement des espaces de stockage GCS)
+      ├── 📂 `bigquery` (Déploiement des datasets et tables)
+      ├── 📂 `ingestion` (Configuration de Cloud Run et Pub/Sub)
+      ├── 📂 `dataform` (Configuration du référentiel SQLX)
+      └── 📂 `monitoring` (Mise en place de l'observabilité et des alertes)
 
 Cette approche déclarative assure :
 - **L'audits de sécurité continus** : Le code est analysé (via `tfsec`) avant chaque déploiement.
@@ -317,47 +164,11 @@ Cette approche déclarative assure :
 
 L'environnement intègre une supervision proactive via la suite Google Cloud Operations (Logging et Monitoring) afin de détecter et de qualifier les anomalies techniques ou fonctionnelles.
 
-<table style="width: 100%; border-collapse: collapse; font-family: 'Poppins', sans-serif; font-size: 10pt; margin: 20px 0; border: 1px solid #eeeeee;">
-  <tr style="background-color: #0b132b; color: #ffffff; font-weight: bold; text-align: center;">
-    <th style="width: 33%; padding: 10px; border: 1px solid #eeeeee;">1. Sources & Logs</th>
-    <th style="width: 34%; padding: 10px; border: 1px solid #eeeeee;">2. Centralisation & Audit</th>
-    <th style="width: 33%; padding: 10px; border: 1px solid #eeeeee;">3. Alerting & Alertes Critiques</th>
-  </tr>
-  <tr style="vertical-align: top;">
-    <!-- Column 1 -->
-    <td style="padding: 12px; border: 1px solid #eeeeee; background-color: #ffffff;">
-      <div style="margin-bottom: 10px; padding: 8px; background-color: #eeeeee; border-left: 4px solid #0d2149; border-radius: 2px;">
-        <b>Logs Cloud Run</b><br/>
-        <small style="color: #4f4f4f;">Traces techniques et fonctionnelles d'ingestion.</small>
-      </div>
-      <div style="padding: 8px; background-color: #eeeeee; border-left: 4px solid #F4BF46; border-radius: 2px;">
-        <b>Logs Dataform</b><br/>
-        <small style="color: #4f4f4f;">Statuts d'exécution et rapports des transformations SQL.</small>
-      </div>
-    </td>
-    <!-- Column 2 -->
-    <td style="padding: 12px; border: 1px solid #eeeeee; background-color: #fdfaf2; text-align: center; vertical-align: middle;">
-      <div style="font-weight: bold; color: #0b132b; margin-bottom: 8px;">Log Router (GCP)</div>
-      <div style="font-size: 14pt; color: #208AAE; font-weight: bold; margin-bottom: 8px;">&darr;</div>
-      <div style="padding: 8px; background-color: #0b132b; color: #ffffff; border-radius: 4px; font-weight: bold;">
-        BigQuery<br/>
-        <span style="font-size: 8.5pt; font-weight: normal;">Dataset d'Observabilité</span>
-      </div>
-      <small style="display: block; margin-top: 8px; color: #4f4f4f;">Centralisation pour tableaux de bord et analyses post-mortem.</small>
-    </td>
-    <!-- Column 3 -->
-    <td style="padding: 12px; border: 1px solid #eeeeee; background-color: #ffffff;">
-      <div style="margin-bottom: 10px; padding: 8px; background-color: #C91432; color: #ffffff; border-radius: 4px; font-weight: bold;">
-        Rejet en Quarantaine<br/>
-        <span style="font-size: 8pt; font-weight: normal;">Alerte immédiate en cas de fichier non conforme aux schémas.</span>
-      </div>
-      <div style="padding: 8px; background-color: #C91432; color: #ffffff; border-radius: 4px; font-weight: bold;">
-        Échec de Transformation<br/>
-        <span style="font-size: 8pt; font-weight: normal;">Alerte immédiate si une règle de qualité SQL (Dataform) échoue.</span>
-      </div>
-    </td>
-  </tr>
-</table>
+| Émetteur du Log | Type de Logs | Centralisation | Cible d'Alerting / Stockage | Règle / Seuil de déclenchement |
+| :--- | :--- | :---: | :--- | :--- |
+| **Cloud Run** (Ingestion) | Traces applicatives et d'exécution | `→ Log Router →` | **Alerte : Rejet Quarantaine** | Déclenchement instantané à chaque rejet de fichier par le Circuit Breaker. |
+| **Dataform** (SQLX) | logs d'exécution des pipelines | `→ Log Router →` | **Alerte : Échec SQL** | Déclenchement dès qu'une grilles de qualité (Quality Gate) ou assertion échoue. |
+| **Tous les services GCP** | Logs d'Audit et Logs système | `→ Log Router →` | **Dataset BigQuery d'Observabilité** | Stockage complet persistant pour audits, post-mortems et dashboards Looker. |
 
 | Catégorie d'Anomalie | Cause Fonctionnelle Typique | Action Opérationnelle Requise |
 |:--------------|:-----------------|:---------------|
