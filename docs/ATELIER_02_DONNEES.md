@@ -7,6 +7,12 @@
 
 *Objectif : Configurer les pipelines d'ingestion à partir des fichiers fournis par IDEX, et définir les règles de rejet (le "Circuit Breaker").*
 
+> [!IMPORTANT]
+> **Attendus et Actions Clés de cet Atelier :**
+> *   🎯 **Objectif principal** : Valider la stratégie d'ingestion (règle stricte du "Circuit Breaker" YAML) et la méthodologie de transformation des données via le modèle Medallion (Dataform).
+> *   ⚠️ **Point Bloquant Critique IDEX** : Fournir les **échantillons de données** réels anonymisés (fichiers d'extractions EnergX et XForce) ainsi que le **dictionnaire de données** associé.
+> *   🔧 **Livrable Pyl.Tech** : Rédiger les schémas de contrats de données YAML et concevoir le service serverless d'ingestion Python (Cloud Run).
+
 ---
 
 ## 1. Architecture d'Ingestion : Rappel du Modèle Validé
@@ -98,11 +104,11 @@ Pour chaque source, nous devons remplir cette fiche avec les experts métiers :
 
 ### 3.4. Prérequis Techniques (Point Bloquant Critique)
 
-Ces éléments doivent absolument être fournis par IDEX pour que nous puissions démarrer les développements :
-
-1. **Espace de Réception (Point de dépôt)** : Création et validation des espaces de stockage (Buckets Cloud Storage) de l'environnement GCP pour réceptionner les fichiers.
-2. **Échantillons Représentatifs (Samples)** : Fourniture impérative d'un jeu de fichiers d'extractions représentatif (CSV, XML ou JSON) couvrant les systèmes EnergX et XForce. Ceci est obligatoire en l'absence de connectivité directe par API.
-3. **Dictionnaire de Données** : Fourniture de la documentation métier des données afin de paramétrer les règles de rejet du Circuit Breaker (définition des champs strictement obligatoires, formatage des dates, identification des clés uniques).
+> [!CAUTION]
+**Prérequis contractuels et techniques obligatoires (Action IDEX) :**
+1. **Espaces de Réception (Landing Zone)** : Créer et valider les buckets de stockage Google Cloud Storage (GCS) sur GCP pour accueillir les fichiers déposés.
+2. **Échantillons de Données (Samples)** : Fournir impérativement des fichiers d'extraction anonymisés et complets (CSV, XML ou JSON) pour les systèmes **EnergX** et **XForce**.
+3. **Dictionnaire de Données** : Transmettre la documentation métier détaillée (champs obligatoires, formats de dates, clés primaires de jointure) nécessaire pour configurer les alertes et les rejets du Circuit Breaker.
 
 ---
 

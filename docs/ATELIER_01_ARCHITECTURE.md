@@ -5,11 +5,18 @@
 
 *Ce document de référence synthétise les choix architecturaux et les prérequis techniques liés au déploiement de la Data Platform. Il est conçu pour être autoporteur et consultable a posteriori par l'ensemble des parties prenantes (architectes, administrateurs réseau, chefs de projet).*
 
+> [!IMPORTANT]
+> **Attendus et Actions Clés de cet Atelier :**
+> *   🎯 **Objectif principal** : Valider les choix de hiérarchie d'organisation GCP (environnements Dev/Prod), le modèle de droits d'accès IAM, et la politique d'intégration continue sécurisée (WIF).
+> *   🔑 **Action Critique Client (IDEX)** : Créer les deux projets GCP (`idex-data-dev` et `idex-data-prod`) et y activer les APIs d'infrastructure requises.
+> *   👥 **Action Identités** : Créer les 3 groupes de sécurité Workspace (`gcp-data-engineers`, `gcp-data-analysts`, `gcp-business-users`) et y intégrer les équipes projets.
+> *   🛠️ **Livrable Pyl.Tech** : Fournir l'intégralité du code de déploiement d'infrastructure Terraform sous forme de modules réutilisables.
+
 ---
 
 ## 1. Gouvernance et Fondations Cloud
 
-L'objectif est de déployer le socle "Secure by Design" et de préparer la gestion des identités. Cela posera des bases saines, notamment pour la sécurité du futur Agent IA.
+L'objectif est de déployer le socle "Secure by Design" et de préparer la gestion des identités.
 
 ### 1.1. Modèle d'Organisation et de Projets (Environnement POC)
 
@@ -33,11 +40,12 @@ Cependant, pour démontrer dès aujourd'hui les avantages d'une plateforme indus
 
 Votre **Organisation GCP** existe déjà et est nativement liée à votre annuaire Google Workspace. Cela va grandement faciliter la gestion des accès.
 
-**Actions Requises :**
-1. **Vérifier l'Organisation** : Connectez-vous sur `console.cloud.google.com`. Votre domaine doit apparaître en haut à gauche.
-2. **Créer les 2 Projets GCP** : `idex-data-dev` et `idex-data-prod`.
-3. **Activer les APIs GCP** : `bigquery.googleapis.com`, `run.googleapis.com`, `pubsub.googleapis.com`, `storage.googleapis.com`, `dataform.googleapis.com`, `secretmanager.googleapis.com`.
-4. **Instance Looker** : Validation et création de l'instance de test Looker.
+> [!IMPORTANT]
+> **Actions Requises (Atelier 1.1) :**
+> 1. **Vérifier l'Organisation** : Se connecter sur `console.cloud.google.com` pour confirmer la présence du domaine en haut à gauche.
+> 2. **Créer les 2 Projets GCP** : Créer les projets `idex-data-dev` et `idex-data-prod`.
+> 3. **Activer les APIs GCP** : Activer `bigquery.googleapis.com`, `run.googleapis.com`, `pubsub.googleapis.com`, `storage.googleapis.com`, `dataform.googleapis.com`, `secretmanager.googleapis.com`.
+> 4. **Instance Looker** : Valider et instancier l'environnement de test Looker.
 
 ---
 
@@ -68,12 +76,13 @@ Il faut définir comment l'équipe PylTech accèdera aux ressources. Puisque nou
 
 Durant la phase de développement, les équipes de réalisation nécessitent un niveau d'accès `Owner` (Propriétaire) sur le projet `dev` afin de garantir la vélocité. Le projet `prod` appliquera quant à lui une approche stricte de "Least Privilege".
 
-**Actions Requises :**
-1. Création de trois groupes de sécurité dans l'annuaire Google Workspace :
-   - `gcp-data-engineers@votre-domaine.com`
-   - `gcp-data-analysts@votre-domaine.com`
-   - `gcp-business-users@votre-domaine.com`
-2. Affectation de l'équipe Pyl.Tech au groupe "Engineers" selon l'option d'intégration retenue.
+> [!IMPORTANT]
+> **Actions Requises (Atelier 2.2) :**
+> 1. **Créer les 3 groupes de sécurité Workspace** :
+>    - `gcp-data-engineers@votre-domaine.com`
+>    - `gcp-data-analysts@votre-domaine.com`
+>    - `gcp-business-users@votre-domaine.com`
+> 2. **Affecter l'équipe projet** : Assigner les consultants Pyl.Tech au groupe `gcp-data-engineers` selon le mode d'authentification convenu.
 
 ### 2.3. Sécurité des Comptes de Service
 
@@ -98,9 +107,10 @@ Ce standard permet à votre outil Git de s'authentifier auprès de GCP de maniè
 
 > 💡 **Note de sécurité** : Le token expire automatiquement après 1 heure maximum. Aucun secret persistant ni clé JSON n'est stocké ou exporté.
 
-**Actions Requises :**
-1. Validation de l'outil de versioning (GitLab, GitHub, etc.) qui hébergera le code source.
-2. Configuration conjointe du `Workload Identity Pool` sur GCP pour n'approuver que les requêtes provenant spécifiquement de ce dépôt autorisé.
+> [!IMPORTANT]
+> **Actions Requises (Atelier 3) :**
+> 1. **Valider le dépôt Git** : Confirmer l'outil de gestion du code source (GitHub, GitLab...) accueillant le projet.
+> 2. **Configurer WIF** : Établir conjointement le `Workload Identity Pool` GCP pour n'autoriser les déploiements que depuis ce dépôt spécifique.
 
 ---
 
