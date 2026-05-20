@@ -80,10 +80,8 @@ def validate_dataframe(df: pd.DataFrame, table_name: str, storage_client=None, s
     Validates a DataFrame against the schema corresponding to table_name.
     Lazy loads the schema from GCS if it is not in the registry.
     Returns a tuple of (valid_df, invalid_df).
+    Optimized for high performance using records and fail-fast short-circuiting.
     """
-    valid_records = []
-    invalid_records = []
-
     # Lazy load schema if not in registry
     if table_name not in SCHEMA_REGISTRY:
         schema = load_schema_from_gcs(storage_client, schema_bucket, table_name)
@@ -93,25 +91,25 @@ def validate_dataframe(df: pd.DataFrame, table_name: str, storage_client=None, s
     schema = SCHEMA_REGISTRY.get(table_name)
 
     if not schema:
-        # If no schema is found, quarantine all records
-        for index, row in df.iterrows():
-            row_dict = row.to_dict()
-            row_dict['quarantine_reason'] = f"Schema not found for table: {table_name}"
-            invalid_records.append(row_dict)
-        return pd.DataFrame(), pd.DataFrame(invalid_records)
+        # If no schema is found, quarantine all records quickly
+        records = df.to_dict(orient='records')
+        for record in records:
+            record['quarantine_reason'] = f"Schema not found for table: {table_name}"
+        return pd.DataFrame(), pd.DataFrame(records)
 
-    for index, row in df.iterrows():
+    # Convert DataFrame to records (dict list) for massive speedup over iterrows()
+    records = df.to_dict(orient='records')
+    valid_records = []
+
+    for record in records:
         try:
-            # Convert NaN to None for nullable field support
-            row_dict = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
-            schema(**row_dict)
-            valid_records.append(row)
+            # Clean up NaN to None for nullable field compatibility in Pydantic
+            clean_record = {k: (None if pd.isna(v) else v) for k, v in record.items()}
+            schema(**clean_record)
+            valid_records.append(record)
         except ValidationError as e:
-            row_dict = row.to_dict()
-            row_dict['quarantine_reason'] = str(e)
-            invalid_records.append(row_dict)
+            # Short-circuit immediately on first validation failure (All-or-Nothing)
+            record['quarantine_reason'] = str(e)
+            return pd.DataFrame(), pd.DataFrame([record])
 
-    valid_df = pd.DataFrame(valid_records)
-    invalid_df = pd.DataFrame(invalid_records)
-
-    return valid_df, invalid_df
+    return pd.DataFrame(valid_records), pd.DataFrame()

@@ -109,6 +109,7 @@ def _acquire_processing_lock(bucket_name: str, file_name: str):
     """
     Atomically move a file from landing to processing bucket.
     Returns (processing_blob, original_generation) or (None, None) if already processed.
+    Self-heals stale locks older than 15 minutes.
     """
     bucket = storage_client.bucket(bucket_name)
     original_blob = bucket.get_blob(file_name)
@@ -118,6 +119,24 @@ def _acquire_processing_lock(bucket_name: str, file_name: str):
         return None, None
 
     processing_bkt = storage_client.bucket(PROCESSING_BUCKET)
+
+    # Self-healing stale locks
+    try:
+        stale_blob = processing_bkt.get_blob(file_name)
+        if stale_blob:
+            from datetime import datetime, timezone
+            age = datetime.now(timezone.utc) - stale_blob.updated
+            if age.total_seconds() > 900:  # 15 minutes
+                logger.warning(
+                    f"Found stale lock file {file_name} (age: {age.total_seconds()}s) in processing. "
+                    "Deleting to self-heal pipeline."
+                )
+                try:
+                    stale_blob.delete(if_generation_match=stale_blob.generation)
+                except Exception as del_err:
+                    logger.error(f"Failed to delete stale lock: {del_err}")
+    except Exception as e:
+        logger.error(f"Error checking for stale lock: {e}")
 
     try:
         blob = bucket.copy_blob(
@@ -159,7 +178,25 @@ def _validate_file(blob, file_name: str, table_name: str):
             if file_name.endswith(".csv"):
                 iterator = pd.read_csv(f, chunksize=10000)
             elif file_name.endswith((".jsonl", ".json")):
-                iterator = pd.read_json(f, lines=True, chunksize=10000)
+                # Peeking at the first character to determine if it is a JSON array
+                is_json_array = False
+                try:
+                    first_char = f.read(1)
+                    while first_char and first_char.isspace():
+                        first_char = f.read(1)
+                    if first_char == '[':
+                        is_json_array = True
+                    f.seek(0)  # Reset stream position after peeking
+                except Exception as peek_err:
+                    logger.warning(f"Failed to peek first character for JSON format, defaulting to JSONL: {peek_err}")
+                    is_json_array = False
+
+                if is_json_array:
+                    logger.info(f"Detected standard JSON array for file: {file_name}. Reading without chunking.")
+                    df = pd.read_json(f)
+                    iterator = [df]
+                else:
+                    iterator = pd.read_json(f, lines=True, chunksize=10000)
             else:
                 logger.warning(f"Unsupported file format: {file_name}")
                 return 0, 1
@@ -228,7 +265,11 @@ def _load_to_bigquery(blob, processing_bkt, file_name: str, table_name: str, tab
         write_disposition="WRITE_APPEND",
         schema_update_options=["ALLOW_FIELD_ADDITION"],
         source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON if is_json else bigquery.SourceFormat.CSV,
-        skip_leading_rows=0 if is_json else 1
+        skip_leading_rows=0 if is_json else 1,
+        # Configure daily ingestion-time partitioning to resolve Dataform incremental query failures
+        time_partitioning=bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY
+        )
     )
 
     if bq_schema:

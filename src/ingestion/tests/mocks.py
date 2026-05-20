@@ -1,15 +1,16 @@
-"""Mock classes for GCS and BigQuery clients used in tests."""
 import io
+from datetime import datetime, timezone
 
 
 class MockBlob:
     """Mock GCS Blob with generation tracking and file content."""
 
-    def __init__(self, name, content=None, exists=True, generation=1):
+    def __init__(self, name, content=None, exists=True, generation=1, updated=None):
         self.name = name
         self._content = content or ""
         self._exists = exists
         self.generation = generation
+        self.updated = updated or datetime.now(timezone.utc)
 
     def exists(self):
         return self._exists
