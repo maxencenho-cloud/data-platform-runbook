@@ -19,15 +19,17 @@ La plateforme s'exécutera dans des Projets GCP temporaires, isolés de votre pr
 
 Cependant, pour démontrer dès aujourd'hui les avantages d'une plateforme industrielle, nous utilisons d'emblée l'automatisation (Terraform) avec deux environnements de travail : **Dev** et **Prod**.
 
-* 🏢 **Organisation GCP** (`votre-domaine.com`)
-  * ├── 📁 **Dossier : Non-Production**
-  │   └── ⚙️ **Projet GCP : `idex-data-dev`** *(POC & Environnement Dev)*
-  │       ├── 📦 **Cloud Storage** (Stockage brut, Landing & Quarantine)
-  │       ├── 📊 **BigQuery** (Bronze, Silver, Gold - Entrepôt de données)
-  │       ├── ⚡ **Cloud Run** (Calcul Serverless d'ingestion)
-  │       └── 🔄 **Dataform** (Orchestration & Transformations SQL)
-  * └── 📁 **Dossier : Production**
-      └── ⚙️ **Projet GCP : `idex-data-prod`** *(Production cible répliquée)*
+```text
+🏢 Organisation GCP (votre-domaine.com)
+├── 📁 Dossier : Non-Production
+│   └── ⚙️ Projet GCP : idex-data-dev (POC & Environnement Dev)
+│       ├── 📦 Cloud Storage (Stockage brut, Landing & Quarantine)
+│       ├── 📊 BigQuery (Bronze, Silver, Gold - Entrepôt de données)
+│       ├── ⚡ Cloud Run (Calcul Serverless d'ingestion)
+│       └── 🔄 Dataform (Orchestration & Transformations SQL)
+└── 📁 Dossier : Production
+    └── ⚙️ Projet GCP : idex-data-prod (Production cible répliquée)
+```
 
 Votre **Organisation GCP** existe déjà et est nativement liée à votre annuaire Google Workspace. Cela va grandement faciliter la gestion des accès.
 
@@ -107,22 +109,31 @@ Ce standard permet à votre outil Git de s'authentifier auprès de GCP de maniè
 L'architecture est découpée en deux flux asynchrones et découplés : l'Ingestion (Event-Driven) et la Transformation (Batch Medallion).
 
 #### 4.1. Flux d'Ingestion (Event-Driven)
-* 📥 **Fichiers Sources** 
-  * ➔ 📦 **Zone Landing** *(Cloud Storage)* 
-    * ➔ 🔔 **Bus d'Événements** *(Pub/Sub)* 
-      * ➔ ⚡ **Service d'Ingestion** *(Cloud Run)*
-        * ├── **Validation Réussie (100%)** ➔ 🟢 **Zone Staging** *(GCS)* ➔ 📊 **Bronze (BigQuery)**
-        * └── **Échec de Validation** ➔ 🔴 **Zone Quarantaine** *(GCS)* *(Fichier rejeté en intégralité)*
+
+```text
+📥 Fichiers Sources
+└── 📦 Zone Landing (Cloud Storage)
+    └── 🔔 Bus d'Événements (Pub/Sub)
+        └── ⚡ Service d'Ingestion (Cloud Run)
+            ├── Validation Réussie (100%) ➔ 🟢 Zone Staging (GCS) ➔ 📊 Bronze (BigQuery)
+            └── Échec de Validation ➔ 🔴 Zone Quarantaine (GCS) (Fichier rejeté en intégralité)
+```
 
 #### 4.2. Flux de Transformation (Batch Medallion)
-* 📊 **Bronze (BigQuery)** *(Données brutes)*
-  * ➔ 🔄 **Orchestrateur Dataform** *(Nettoyage & Dédoublonnage)* 
-    * ➔ ⚙️ **Silver (BigQuery)** *(Données propres et typées)*
-      * ➔ 🔄 **Orchestrateur Dataform** *(Agrégations Métiers)*
-        * ➔ 🏆 **Gold (BigQuery)** *(Indicateurs agrégés)*
+
+```text
+📊 Bronze (BigQuery) (Données brutes)
+└── 🔄 Orchestrateur Dataform (Nettoyage & Dédoublonnage)
+    └── ⚙️ Silver (BigQuery) (Données propres et typées)
+        └── 🔄 Orchestrateur Dataform (Agrégations Métiers)
+            └── 🏆 Gold (BigQuery) (Indicateurs agrégés)
+```
 
 #### 4.3. Restitution
-* 🏆 **Gold (BigQuery)** ➔ 📊 **Looker** *(Visualisations & Tableaux de bord)*
+
+```text
+🏆 Gold (BigQuery) ➔ 📊 Looker (Visualisations & Tableaux de bord)
+```
 
 ### 4.1. Flux d'Ingestion ("Circuit Breaker")
 
@@ -145,14 +156,16 @@ Dataform orchestre la transformation de la donnée brute en indicateurs métiers
 
 L'intégralité du socle technique (Réseau, Stockage, IAM, Traitements) est provisionnée via du code Terraform.
 
-* ⚙️ **Point d'entrée Terraform (`main.tf`)**
-  * ├── 📝 **Variables par environnement** (`config.dev.yaml` / `config.prod.yaml`)
-  * └── 📦 **Modules Réutilisables Pyl.Tech**
-      ├── 📂 `storage` (Provisionnement des espaces de stockage GCS)
-      ├── 📂 `bigquery` (Déploiement des datasets et tables)
-      ├── 📂 `ingestion` (Configuration de Cloud Run et Pub/Sub)
-      ├── 📂 `dataform` (Configuration du référentiel SQLX)
-      └── 📂 `monitoring` (Mise en place de l'observabilité et des alertes)
+```text
+⚙️ Point d'entrée Terraform (main.tf)
+├── 📝 Variables par environnement (config.dev.yaml / config.prod.yaml)
+└── 📦 Modules Réutilisables Pyl.Tech
+    ├── 📂 storage (Provisionnement des espaces de stockage GCS)
+    ├── 📂 bigquery (Déploiement des datasets et tables)
+    ├── 📂 ingestion (Configuration de Cloud Run et Pub/Sub)
+    ├── 📂 dataform (Configuration du référentiel SQLX)
+    └── 📂 monitoring (Mise en place de l'observabilité et des alertes)
+```
 
 Cette approche déclarative assure :
 - **L'audits de sécurité continus** : Le code est analysé (via `tfsec`) avant chaque déploiement.

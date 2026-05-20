@@ -13,11 +13,13 @@
 
 Pour mémoire, voici le flux technique validé lors de l'Atelier 1 :
 
-* 📥 **Système Source** *(EnergX / XForce)*
-  * ➔ 📦 **Landing GCS** *(Dépôt du fichier)*
-    * ➔ ⚡ **Ingestion Cloud Run** *(Validation par Contrats YAML)*
-      * ├── **Si Conforme (100%)** ➔ 📊 **Bronze (BigQuery)** ➔ ⚙️ **Silver (BigQuery)** ➔ 🏆 **Gold (BigQuery)** ➔ 📊 **Looker (BI)**
-      * └── **Si Non Conforme** ➔ 🔴 **Quarantaine (GCS)** *(Rejet global du fichier)*
+```text
+📥 Système Source (EnergX / XForce)
+└── 📦 Landing GCS (Dépôt du fichier)
+    └── ⚡ Ingestion Cloud Run (Validation par Contrats YAML)
+        ├── Si Conforme (100%) ➔ 📊 Bronze (BigQuery) ➔ ⚙️ Silver (BigQuery) ➔ 🏆 Gold (BigQuery) ➔ 📊 Looker (BI)
+        └── Si Non Conforme ➔ 🔴 Quarantaine (GCS) (Rejet global du fichier)
+```
 
 **Rappel du principe "All-or-Nothing" (Circuit Breaker)** : Chaque fichier est validé de bout en bout. Si une seule anomalie de structure ou de type est détectée, le fichier entier part en Quarantaine. Aucune donnée partielle ou corrompue n'entre dans l'entrepôt.
 
@@ -27,14 +29,16 @@ Pour mémoire, voici le flux technique validé lors de l'Atelier 1 :
 
 Pour ce POC, nous nous concentrons sur les deux systèmes métiers centraux :
 
-* 🗂️ **Sources de Données IDEX**
-  * ├── 📊 **EnergX** *(Système Technique)*
-  │   ├── 🛠️ **Données techniques** : Spécifications et statuts des équipements.
-  │   ├── 📈 **Consommations** : Historiques et relevés d'énergie consommée.
-  │   └── 🔋 **Productions** : Mesures de l'énergie produite par les centrales.
-  * └── 📝 **XForce** *(CRM / Référentiel Contrats)*
-      ├── 🤝 **Contrats** : Tarifs, conditions d'engagement et renouvellements.
-      └── 👥 **CRM Clients** : Fiches d'identité clients, comptes et interlocuteurs.
+```text
+🗂️ Sources de Données IDEX
+├── 📊 EnergX (Système Technique)
+│   ├── 🛠️ Données techniques : Spécifications et statuts des équipements.
+│   ├── 📈 Consommations : Historiques et relevés d'énergie consommée.
+│   └── 🔋 Productions : Mesures de l'énergie produite par les centrales.
+└── 📝 XForce (CRM / Référentiel Contrats)
+    ├── 🤝 Contrats : Tarifs, conditions d'engagement et renouvellements.
+    └── 👥 CRM Clients : Fiches d'identité clients, comptes et interlocuteurs.
+```
 
 ### 2.1. Spécifications des Sources
 
