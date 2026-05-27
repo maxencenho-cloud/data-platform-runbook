@@ -1,6 +1,17 @@
-variable "project_id" {}
-variable "environment" {}
-variable "observability_dataset_id" {}
+variable "project_id" {
+  description = "The GCP project ID"
+  type        = string
+}
+
+variable "environment" {
+  description = "The deployment environment (dev, prod)"
+  type        = string
+}
+
+variable "observability_dataset_id" {
+  description = "The BigQuery dataset ID for centralized observability logs"
+  type        = string
+}
 variable "alert_email" {
   description = "Email address for monitoring alert notifications"
   type        = string
@@ -123,7 +134,7 @@ resource "google_monitoring_alert_policy" "cloud_run_errors" {
 resource "google_logging_project_sink" "platform_jobs_sink" {
   name                   = "platform_jobs_sink_${var.environment}"
   destination            = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${var.observability_dataset_id}"
-  filter                 = "resource.type=\"cloud_run_revision\" OR resource.type=\"cloud_scheduler_job\" OR resource.type=\"dataform.googleapis.com/Repository\""
+  filter                 = "resource.type=\"cloud_run_revision\" OR resource.type=\"dataform.googleapis.com/Repository\""
   unique_writer_identity = true
 
   bigquery_options {
@@ -156,23 +167,6 @@ resource "google_monitoring_dashboard" "platform_dashboard" {
                   "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\"",
                   "aggregation": {
                     "perSeriesAligner": "ALIGN_RATE"
-                  }
-                }
-              }
-            }
-          ]
-        }
-      },
-      {
-        "title": "Cloud Scheduler Triggers",
-        "xyChart": {
-          "dataSets": [
-            {
-              "timeSeriesQuery": {
-                "timeSeriesFilter": {
-                  "filter": "metric.type=\"cloudscheduler.googleapis.com/job/attempt_count\" AND resource.type=\"cloud_scheduler_job\"",
-                  "aggregation": {
-                    "perSeriesAligner": "ALIGN_SUM"
                   }
                 }
               }

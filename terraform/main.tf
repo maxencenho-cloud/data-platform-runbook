@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.44"
     }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.44"
+    }
   }
 }
 
@@ -14,6 +18,11 @@ locals {
 }
 
 provider "google" {
+  project = local.config.gcp.project_id
+  region  = local.config.gcp.region
+}
+
+provider "google-beta" {
   project = local.config.gcp.project_id
   region  = local.config.gcp.region
 }
@@ -49,13 +58,6 @@ module "ingestion" {
   bronze_dataset_id = module.bigquery.bronze_dataset_id
 }
 
-module "orchestration" {
-  source               = "./modules/orchestration"
-  project_id           = local.config.gcp.project_id
-  environment          = var.environment
-  ingestion_topic_name = module.ingestion.ingestion_topic_name
-}
-
 module "dataform" {
   source      = "./modules/dataform"
   project_id  = local.config.gcp.project_id
@@ -68,22 +70,4 @@ module "monitoring" {
   project_id               = local.config.gcp.project_id
   environment              = var.environment
   observability_dataset_id = module.bigquery.observability_dataset_id
-}
-
-module "dataplex" {
-  source            = "./modules/dataplex"
-  project_id        = local.config.gcp.project_id
-  region            = local.config.gcp.region
-  environment       = var.environment
-  landing_bucket_id = module.storage.landing_bucket_name
-  bronze_dataset_id = module.bigquery.bronze_dataset_id
-  silver_dataset_id = module.bigquery.silver_dataset_id
-  gold_dataset_id   = module.bigquery.gold_dataset_id
-}
-
-module "security" {
-  source      = "./modules/security"
-  project_id  = local.config.gcp.project_id
-  region      = local.config.gcp.region
-  environment = var.environment
 }

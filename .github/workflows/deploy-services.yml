@@ -80,7 +80,7 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ steps.config.outputs.region }}-docker.pkg.dev
           docker build -t ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:${{ github.sha }} .
-          docker build -t ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:latest .
+          docker tag ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:${{ github.sha }} ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:latest
           docker push ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:${{ github.sha }}
           docker push ${{ steps.config.outputs.region }}-docker.pkg.dev/${{ steps.config.outputs.project_id }}/data-platform/ingestion-service:latest
 

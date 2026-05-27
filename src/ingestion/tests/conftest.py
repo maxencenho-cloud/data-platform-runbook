@@ -1,11 +1,19 @@
 """Shared test fixtures for the ingestion service."""
 import pytest
-import pandas as pd
 import sys
 import os
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path so we can import main and validator
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# Patch GCP clients BEFORE main.py is imported anywhere.
+# storage.Client() and bigquery.Client() run at module level (line 49-50),
+# so they must be mocked before the first `import main`.
+_storage_patcher = patch("google.cloud.storage.Client", return_value=MagicMock())
+_bq_patcher = patch("google.cloud.bigquery.Client", return_value=MagicMock())
+_storage_patcher.start()
+_bq_patcher.start()
 
 
 @pytest.fixture
@@ -36,18 +44,10 @@ def sample_schema_yaml():
 
 
 @pytest.fixture
-def sample_dataframe():
-    return pd.DataFrame({
-        "id": [1, 2, 3],
-        "name": ["Alice", "Bob", "Charlie"],
-        "value": [10.5, 20.3, 30.1]
-    })
-
-
-@pytest.fixture
-def invalid_dataframe():
-    return pd.DataFrame({
-        "id": ["not_int", 2, 3],
-        "name": ["Alice", "Bob", "Charlie"],
-        "value": [10.5, "not_float", 30.1]
-    })
+def sample_records():
+    """Sample valid records as list of dicts (replaces DataFrame fixture)."""
+    return [
+        {"id": 1, "name": "Alice", "value": 10.5},
+        {"id": 2, "name": "Bob", "value": 20.3},
+        {"id": 3, "name": "Charlie", "value": 30.1},
+    ]

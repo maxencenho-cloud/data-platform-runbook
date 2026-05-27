@@ -1,54 +1,76 @@
-# Dataform Failure Runbook
+# Runbook: Dataform Execution Failure
 
-## Alert
-**Name:** Cloud Scheduler Failure  
-**Trigger:** Dataform transformation job fails
+> **Alert:** The nightly Dataform workflow failed to complete, or completed after 06:00 UTC.
 
-## Context
-Dataform runs on a Cloud Scheduler cadence to transform data from bronze → silver → gold layers. A failure means the analytical views are stale.
+## What happened
 
-## Triage Steps
+The Dataform pipeline runs on two schedules:
+1. **01:00 UTC** — `daily-release`: compiles the latest SQLX code from `main` branch
+2. **02:00 UTC** — `nightly-workflow`: executes the compiled SQL against BigQuery (Bronze → Silver → Gold)
 
-### 1. Check Cloud Scheduler execution
+A failure means the Gold layer (business analytics) is stale.
+
+## Step 1 — Check the Dataform execution status
+
 ```bash
-gcloud scheduler jobs list --location=$REGION
-gcloud scheduler jobs describe dataform-trigger-$ENV --location=$REGION
-```
+# Via the GCP Console (easiest):
+# BigQuery → Dataform → dataform-repo → Workflow Runs
 
-### 2. Check Dataform workflow invocation
-```bash
+# Via gcloud (list recent invocations):
 gcloud dataform workflow-invocations list \
-  --repository=dataform-repo-$ENV \
-  --region=$REGION \
+  --repository=dataform-repo \
+  --region=<REGION> \
   --limit=5
 ```
 
-### 3. Get failure details
-```bash
-gcloud dataform workflow-invocations describe <INVOCATION_ID> \
-  --repository=dataform-repo-$ENV \
-  --region=$REGION
-```
+## Step 2 — Read the error
 
-### 4. Common causes
-| Cause | Fix |
-|-------|-----|
-| Compilation error (syntax) | Fix SQLX syntax, redeploy |
-| Missing source table | Ensure ingestion loaded data before transformation |
-| BQ quota exceeded | Wait for quota reset or request increase |
-| Schema evolution | Update Dataform model to handle new columns |
-| Permission denied | Verify Dataform SA has BQ data editor on relevant datasets |
+In the GCP Console, click the failed workflow run to see which SQLX action failed and its error message.
 
-### 5. Manual rerun
+Common errors:
+
+| Error | Meaning | Fix |
+|-------|---------|-----|
+| `Not found: Table project.bronze.X` | The Bronze table doesn't exist yet (no data ingested) | Ingest at least one file for this table first |
+| `Syntax error in SQL` | A SQLX file has a SQL error | Fix the SQL in `dataform/definitions/`, push to `main` |
+| `Access Denied` | Dataform SA lacks permissions on the dataset | Check IAM: the Dataform SA needs `bigquery.dataEditor` on silver/gold datasets |
+| `Resources exceeded` | Query is too expensive (scanning too much data) | Optimize the query — add partition filters, reduce `SELECT *` |
+| `Compilation failed` | The release compilation (01:00) failed | Check if `dataform compile` passes locally: `cd dataform && npx @dataform/cli compile` |
+
+## Step 3 — Re-run manually
+
+### Option A — Re-run from GCP Console
+
+1. Go to **BigQuery → Dataform → dataform-repo**
+2. Click **Workflow Configurations → nightly-workflow**
+3. Click **Run Now**
+
+### Option B — Re-run via gcloud
+
 ```bash
+# Trigger a new workflow invocation
 gcloud dataform workflow-invocations create \
-  --repository=dataform-repo-$ENV \
-  --region=$REGION \
-  --compilation-result=<COMPILATION_RESULT_ID>
+  --repository=dataform-repo \
+  --region=<REGION> \
+  --workflow-config=nightly-workflow
 ```
 
-### 6. Verify data freshness
-After successful rerun, check the gold tables:
-```sql
-SELECT MAX(processed_at) FROM gold.gld_aggregated;
+### Option C — Run a single action
+
+If only one model failed, you can re-run just that action from the Console to avoid reprocessing everything.
+
+## Step 4 — Validate the fix
+
+```bash
+# Check that the Gold tables have fresh data
+bq query --use_legacy_sql=false \
+  'SELECT MAX(processed_at) AS latest FROM gold.gld_aggregated'
 ```
+
+The `processed_at` timestamp should be from today.
+
+## Step 5 — Prevention
+
+- **Test locally before pushing**: Run `npx @dataform/cli compile` in the `dataform/` directory before pushing SQL changes
+- **The CI pipeline** (`deploy-dataform.yml`) runs `dataform compile` and `dataform test` on every PR — check the GitHub Actions result before merging
+- **Incremental models** (Silver): If a full refresh is needed, drop the Silver table and let Dataform rebuild it

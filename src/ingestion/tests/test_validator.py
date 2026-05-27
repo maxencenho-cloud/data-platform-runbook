@@ -1,12 +1,8 @@
 """Unit tests for the validator module."""
 import pytest
-import pandas as pd
-from unittest.mock import MagicMock
-from tests.mocks import MockStorageClient, MockBucket, MockBlob
-
-# Reset global registries before importing to avoid test pollution
 import sys
 import importlib
+from tests.mocks import MockStorageClient, MockBucket, MockBlob
 
 
 @pytest.fixture(autouse=True)
@@ -29,13 +25,11 @@ class TestLoadSchemaFromGCS:
     """Tests for schema loading from GCS."""
 
     def test_returns_none_when_no_schema_bucket(self, validator):
-        result = validator.load_schema_from_gcs(MagicMock(), None, "test_table")
+        result = validator.load_schema_from_gcs(MockStorageClient(), None, "test_table")
         assert result is None
 
     def test_returns_none_when_blob_not_found(self, validator):
         client = MockStorageClient()
-        bucket = MockBucket("schemas")
-        client._buckets["schemas"] = bucket
         result = validator.load_schema_from_gcs(client, "schemas", "nonexistent_table")
         assert result is None
 
@@ -67,71 +61,68 @@ class TestLoadSchemaFromGCS:
         assert result is None
 
 
-class TestValidateDataframe:
-    """Tests for DataFrame validation against schemas."""
+class TestGetSchema:
+    """Tests for lazy schema loading."""
 
-    def _setup_schema(self, validator, sample_schema_yaml):
+    def test_caches_schema_on_first_load(self, validator, sample_schema_yaml):
         blob = MockBlob("bronze/test_table.yaml", content=sample_schema_yaml)
         bucket = MockBucket("schemas", blobs={"bronze/test_table.yaml": blob})
-        return MockStorageClient(buckets={"schemas": bucket})
+        client = MockStorageClient(buckets={"schemas": bucket})
 
-    def test_valid_dataframe_returns_all_valid(self, validator, sample_dataframe, sample_schema_yaml):
-        client = self._setup_schema(validator, sample_schema_yaml)
-        valid_df, invalid_df = validator.validate_dataframe(
-            sample_dataframe, "test_table",
-            storage_client=client, schema_bucket="schemas"
-        )
-        assert len(valid_df) == 3
-        assert len(invalid_df) == 0
-
-    def test_invalid_dataframe_returns_invalid_records(self, validator, sample_schema_yaml):
-        client = self._setup_schema(validator, sample_schema_yaml)
-        df = pd.DataFrame({
-            "id": ["not_an_int"],
-            "name": ["Alice"],
-            "value": [10.5]
-        })
-        valid_df, invalid_df = validator.validate_dataframe(
-            df, "test_table",
-            storage_client=client, schema_bucket="schemas"
-        )
-        assert len(invalid_df) > 0
-
-    def test_missing_schema_quarantines_all(self, validator, sample_dataframe):
-        client = MockStorageClient()
-        valid_df, invalid_df = validator.validate_dataframe(
-            sample_dataframe, "unknown_table",
-            storage_client=client, schema_bucket="schemas"
-        )
-        assert len(valid_df) == 0
-        assert len(invalid_df) == 3
-        assert "quarantine_reason" in invalid_df.columns
-
-    def test_schema_caching(self, validator, sample_dataframe, sample_schema_yaml):
-        """Second call should use cached schema, not reload from GCS."""
-        client = self._setup_schema(validator, sample_schema_yaml)
-
-        # First call loads from GCS
-        validator.validate_dataframe(
-            sample_dataframe, "test_table",
-            storage_client=client, schema_bucket="schemas"
-        )
+        schema1 = validator.get_schema("test_table", client, "schemas")
+        assert schema1 is not None
         assert "test_table" in validator.SCHEMA_REGISTRY
 
-        # Second call should use cache (even with a different client)
-        mock_client = MockStorageClient()
-        valid_df, _ = validator.validate_dataframe(
-            sample_dataframe, "test_table",
-            storage_client=mock_client, schema_bucket="schemas"
-        )
-        assert len(valid_df) == 3
+        # Second call uses cache (different client, no GCS access)
+        schema2 = validator.get_schema("test_table", MockStorageClient(), "schemas")
+        assert schema2 is schema1
 
-    def test_empty_dataframe(self, validator, sample_schema_yaml):
-        client = self._setup_schema(validator, sample_schema_yaml)
-        df = pd.DataFrame(columns=["id", "name", "value"])
-        valid_df, invalid_df = validator.validate_dataframe(
-            df, "test_table",
-            storage_client=client, schema_bucket="schemas"
-        )
-        assert len(valid_df) == 0
-        assert len(invalid_df) == 0
+    def test_returns_none_for_unknown_table(self, validator):
+        schema = validator.get_schema("unknown", MockStorageClient(), "schemas")
+        assert schema is None
+
+
+class TestValidateRecord:
+    """Tests for single-record validation."""
+
+    def _get_schema(self, validator, sample_schema_yaml):
+        blob = MockBlob("bronze/test_table.yaml", content=sample_schema_yaml)
+        bucket = MockBucket("schemas", blobs={"bronze/test_table.yaml": blob})
+        client = MockStorageClient(buckets={"schemas": bucket})
+        return validator.get_schema("test_table", client, "schemas")
+
+    def test_valid_record_returns_none(self, validator, sample_schema_yaml):
+        schema = self._get_schema(validator, sample_schema_yaml)
+        error = validator.validate_record({"id": 1, "name": "Alice", "value": 10.5}, schema)
+        assert error is None
+
+    def test_valid_csv_string_record(self, validator, sample_schema_yaml):
+        """CSV records are all strings — Pydantic should coerce '1' to int."""
+        schema = self._get_schema(validator, sample_schema_yaml)
+        error = validator.validate_record({"id": "1", "name": "Alice", "value": "10.5"}, schema)
+        assert error is None
+
+    def test_invalid_record_returns_error(self, validator, sample_schema_yaml):
+        schema = self._get_schema(validator, sample_schema_yaml)
+        error = validator.validate_record({"id": "not_int", "name": "Alice", "value": 10.5}, schema)
+        assert error is not None
+
+    def test_empty_string_treated_as_none(self, validator, sample_schema_yaml):
+        """Empty CSV cells should be treated as None for nullable fields."""
+        # Add a nullable field schema
+        nullable_schema_yaml = """fields:
+  - name: id
+    type: int
+  - name: name
+    type: str
+  - name: value
+    type: float
+    nullable: true
+"""
+        blob = MockBlob("bronze/nullable_test.yaml", content=nullable_schema_yaml)
+        bucket = MockBucket("schemas", blobs={"bronze/nullable_test.yaml": blob})
+        client = MockStorageClient(buckets={"schemas": bucket})
+        schema = validator.get_schema("nullable_test", client, "schemas")
+
+        error = validator.validate_record({"id": "1", "name": "Alice", "value": ""}, schema)
+        assert error is None  # Empty string → None → valid for nullable field

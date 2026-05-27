@@ -1,9 +1,9 @@
-from pydantic import BaseModel, ValidationError, create_model
-from typing import List, Dict, Any, Tuple, Optional
-import pandas as pd
+from pydantic import ValidationError, create_model
+from typing import Optional
 import yaml
 from google.cloud import bigquery
 
+# Schema caches — populated on first use, persist for the lifetime of the process
 SCHEMA_REGISTRY = {}
 BQ_SCHEMA_REGISTRY = {}
 
@@ -28,8 +28,8 @@ BQ_TYPE_MAPPING = {
 
 def load_schema_from_gcs(storage_client, schema_bucket: str, table_name: str):
     """
-    Attempts to download and parse the schema YAML from GCS, building a dynamic Pydantic model.
-    Supports nullable fields and enriched schema format (version, description).
+    Download and parse the schema YAML from GCS, building a dynamic Pydantic model.
+    Returns the Pydantic model class, or None if no schema is found.
     """
     if not schema_bucket:
         return None
@@ -56,10 +56,8 @@ def load_schema_from_gcs(storage_client, schema_bucket: str, table_name: str):
         bq_mode = "NULLABLE" if is_nullable else "REQUIRED"
 
         if is_nullable:
-            # Optional field: can be None
             fields[field_name] = (Optional[field_type], None)
         else:
-            # Required field
             fields[field_name] = (field_type, ...)
 
         bq_fields.append(bigquery.SchemaField(
@@ -71,45 +69,31 @@ def load_schema_from_gcs(storage_client, schema_bucket: str, table_name: str):
 
     BQ_SCHEMA_REGISTRY[table_name] = bq_fields
 
-    # Dynamically create and return the Pydantic model
     return create_model(f"{table_name}_schema", **fields)
 
 
-def validate_dataframe(df: pd.DataFrame, table_name: str, storage_client=None, schema_bucket=None) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Validates a DataFrame against the schema corresponding to table_name.
-    Lazy loads the schema from GCS if it is not in the registry.
-    Returns a tuple of (valid_df, invalid_df).
-    Optimized for high performance using records and fail-fast short-circuiting.
-    """
-    # Lazy load schema if not in registry
+def get_schema(table_name: str, storage_client=None, schema_bucket=None):
+    """Get the Pydantic schema for a table, loading from GCS on first access."""
     if table_name not in SCHEMA_REGISTRY:
         schema = load_schema_from_gcs(storage_client, schema_bucket, table_name)
         if schema:
             SCHEMA_REGISTRY[table_name] = schema
 
-    schema = SCHEMA_REGISTRY.get(table_name)
+    return SCHEMA_REGISTRY.get(table_name)
 
-    if not schema:
-        # If no schema is found, quarantine all records quickly
-        records = df.to_dict(orient='records')
-        for record in records:
-            record['quarantine_reason'] = f"Schema not found for table: {table_name}"
-        return pd.DataFrame(), pd.DataFrame(records)
 
-    # Convert DataFrame to records (dict list) for massive speedup over iterrows()
-    records = df.to_dict(orient='records')
-    valid_records = []
+def validate_record(record: dict, schema) -> Optional[str]:
+    """
+    Validate a single record against a Pydantic schema.
+    Returns None if valid, error message string if invalid.
 
-    for record in records:
-        try:
-            # Clean up NaN to None for nullable field compatibility in Pydantic
-            clean_record = {k: (None if pd.isna(v) else v) for k, v in record.items()}
-            schema(**clean_record)
-            valid_records.append(record)
-        except ValidationError as e:
-            # Short-circuit immediately on first validation failure (All-or-Nothing)
-            record['quarantine_reason'] = str(e)
-            return pd.DataFrame(), pd.DataFrame([record])
-
-    return pd.DataFrame(valid_records), pd.DataFrame()
+    Empty strings are converted to None to handle CSV empty cells —
+    csv.DictReader returns "" for missing values, but Pydantic Optional
+    fields expect Python None.
+    """
+    try:
+        clean = {k: (None if v == "" else v) for k, v in record.items()}
+        schema(**clean)
+        return None
+    except ValidationError as e:
+        return str(e)

@@ -5,12 +5,17 @@ from datetime import datetime, timezone
 class MockBlob:
     """Mock GCS Blob with generation tracking and file content."""
 
-    def __init__(self, name, content=None, exists=True, generation=1, updated=None):
+    def __init__(self, name, content=None, exists=True, generation=1, updated=None, bucket=None):
         self.name = name
         self._content = content or ""
         self._exists = exists
         self.generation = generation
         self.updated = updated or datetime.now(timezone.utc)
+        self.bucket = bucket
+        self.size = len(self._content)
+
+    def reload(self):
+        self.size = len(self._content)
 
     def exists(self):
         return self._exists
@@ -19,10 +24,19 @@ class MockBlob:
         return io.StringIO(self._content)
 
     def delete(self, if_generation_match=None):
-        pass
+        if self.bucket and self.name in self.bucket._blobs:
+            del self.bucket._blobs[self.name]
+        self._exists = False
 
     def download_as_text(self):
         return self._content
+
+    def upload_from_string(self, data, content_type=None):
+        self._content = data
+        self.size = len(data)
+        self._exists = True
+        if self.bucket:
+            self.bucket._blobs[self.name] = self
 
 
 class MockBucket:
@@ -31,16 +45,21 @@ class MockBucket:
     def __init__(self, name, blobs=None):
         self.name = name
         self._blobs = blobs or {}
+        # Ensure initial blobs have their bucket reference set
+        for b in self._blobs.values():
+            b.bucket = self
 
     def get_blob(self, name):
         return self._blobs.get(name)
 
     def blob(self, name):
-        return self._blobs.get(name, MockBlob(name, exists=False))
+        if name in self._blobs:
+            return self._blobs[name]
+        return MockBlob(name, exists=False, bucket=self)
 
     def copy_blob(self, blob, destination_bucket, new_name=None,
                   if_source_generation_match=None, if_generation_match=None):
-        new_blob = MockBlob(new_name or blob.name, blob._content, generation=blob.generation)
+        new_blob = MockBlob(new_name or blob.name, blob._content, generation=blob.generation, bucket=destination_bucket)
         destination_bucket._blobs[new_blob.name] = new_blob
         return new_blob
 
@@ -64,7 +83,7 @@ class MockBQJob:
         self._should_fail = should_fail
         self.errors = errors
 
-    def result(self):
+    def result(self, timeout=None):
         if self._should_fail:
             raise Exception("BQ Load failed")
 

@@ -82,7 +82,7 @@ class TestPubSubEndpoint:
                 }.get(name, MockBucket(name))
 
             mock_storage.bucket = bucket_router
-            mock_bq.load_table_from_uri.return_value = MagicMock(result=lambda: None, errors=None)
+            mock_bq.load_table_from_uri.return_value = MagicMock(result=lambda **kwargs: None, errors=None)
 
             import importlib
             import main

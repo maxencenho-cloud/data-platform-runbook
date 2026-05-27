@@ -1,6 +1,17 @@
-variable "project_id" {}
-variable "region" {}
-variable "environment" {}
+variable "project_id" {
+  description = "The GCP project ID"
+  type        = string
+}
+
+variable "region" {
+  description = "The GCP region for resource deployment"
+  type        = string
+}
+
+variable "environment" {
+  description = "The deployment environment (dev, prod)"
+  type        = string
+}
 
 data "google_project" "project" {
   project_id = var.project_id

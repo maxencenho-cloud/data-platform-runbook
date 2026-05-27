@@ -1,5 +1,6 @@
 import os
 import re
+import csv
 import logging
 import base64
 import json
@@ -10,8 +11,7 @@ from typing import Optional, Dict
 
 from google.cloud import storage, bigquery
 from google.api_core import exceptions
-import pandas as pd
-from validator import validate_dataframe, BQ_SCHEMA_REGISTRY
+from validator import get_schema, validate_record, BQ_SCHEMA_REGISTRY
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,49 +29,27 @@ async def health_check():
 
 
 # --- Exception Handlers ---
+ERROR_MAP = {
+    ValueError: (400, "BAD_REQUEST"),
+    FileNotFoundError: (404, "RESOURCE_NOT_FOUND"),
+}
+
+
+def _make_handler(status: int, code: str):
+    async def handler(request: Request, exc: Exception):
+        logger.error(f"{code}: {exc}")
+        return JSONResponse(status_code=status, content={"error": {"code": code, "message": str(exc)}})
+    return handler
+
+
+for _exc_type, (_status, _code) in ERROR_MAP.items():
+    app.add_exception_handler(_exc_type, _make_handler(_status, _code))
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Internal server error: {exc}")
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": {
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "An internal server error occurred while processing the file.",
-                "details": {}
-            }
-        }
-    )
-
-
-@app.exception_handler(ValueError)
-async def value_error_handler(request: Request, exc: ValueError):
-    logger.error(f"Validation error: {exc}")
-    return JSONResponse(
-        status_code=400,
-        content={
-            "error": {
-                "code": "BAD_REQUEST",
-                "message": str(exc),
-                "details": {}
-            }
-        }
-    )
-
-
-@app.exception_handler(FileNotFoundError)
-async def not_found_error_handler(request: Request, exc: FileNotFoundError):
-    logger.error(f"File not found: {exc}")
-    return JSONResponse(
-        status_code=404,
-        content={
-            "error": {
-                "code": "RESOURCE_NOT_FOUND",
-                "message": "The requested file could not be found.",
-                "details": {}
-            }
-        }
-    )
+    return JSONResponse(status_code=500, content={"error": {"code": "INTERNAL_SERVER_ERROR", "message": "An internal server error occurred."}})
 
 
 # --- Clients ---
@@ -88,6 +66,8 @@ STAGING_BUCKET = os.environ.get("STAGING_BUCKET")
 ARCHIVE_BUCKET = os.environ.get("ARCHIVE_BUCKET")
 
 BQ_LOAD_TIMEOUT = 300  # seconds
+SUPPORTED_FORMATS = {".csv", ".jsonl", ".json"}
+JSON_FORMATS = {".jsonl", ".json"}
 
 
 # --- Models ---
@@ -108,8 +88,8 @@ class PubSubMessage(BaseModel):
 def _acquire_processing_lock(bucket_name: str, file_name: str):
     """
     Atomically move a file from landing to processing bucket.
-    Returns (processing_blob, original_generation) or (None, None) if already processed.
-    Self-heals stale locks older than 15 minutes.
+    Returns (processing_blob, generation) or (None, None) if already processed.
+    Stale files in processing are cleaned up by GCS lifecycle rules (1-day TTL).
     """
     bucket = storage_client.bucket(bucket_name)
     original_blob = bucket.get_blob(file_name)
@@ -120,24 +100,6 @@ def _acquire_processing_lock(bucket_name: str, file_name: str):
 
     processing_bkt = storage_client.bucket(PROCESSING_BUCKET)
 
-    # Self-healing stale locks
-    try:
-        stale_blob = processing_bkt.get_blob(file_name)
-        if stale_blob:
-            from datetime import datetime, timezone
-            age = datetime.now(timezone.utc) - stale_blob.updated
-            if age.total_seconds() > 900:  # 15 minutes
-                logger.warning(
-                    f"Found stale lock file {file_name} (age: {age.total_seconds()}s) in processing. "
-                    "Deleting to self-heal pipeline."
-                )
-                try:
-                    stale_blob.delete(if_generation_match=stale_blob.generation)
-                except Exception as del_err:
-                    logger.error(f"Failed to delete stale lock: {del_err}")
-    except Exception as e:
-        logger.error(f"Error checking for stale lock: {e}")
-
     try:
         blob = bucket.copy_blob(
             original_blob,
@@ -146,7 +108,14 @@ def _acquire_processing_lock(bucket_name: str, file_name: str):
             if_source_generation_match=original_blob.generation,
             if_generation_match=0
         )
-        original_blob.delete(if_generation_match=original_blob.generation)
+        try:
+            original_blob.delete(if_generation_match=original_blob.generation)
+        except Exception as del_err:
+            logger.error(
+                f"[GCS_LOCK_WARNING] Copied file {file_name} to processing, "
+                f"but failed to delete original from landing bucket: {del_err}. "
+                "Pipeline will continue, but duplicate checks may occur."
+            )
         return blob, blob.generation
     except (exceptions.NotFound, exceptions.PreconditionFailed):
         logger.info(f"File {file_name} concurrently moved to processing or deleted.")
@@ -154,70 +123,59 @@ def _acquire_processing_lock(bucket_name: str, file_name: str):
 
 
 def _resolve_table_name(file_name: str) -> str:
-    """Extract and sanitize the target table name from the file path."""
+    """Extract, sanitize, and strip timestamp suffixes from the target table name."""
     base_name = os.path.basename(file_name)
     parts = file_name.split('/')
     if len(parts) >= 2:
         table_name = parts[0]
     else:
-        table_name = base_name.split('.')[0]
+        # Get filename without extension
+        table_name = os.path.splitext(base_name)[0]
 
+    # Clean date/timestamp suffixes (e.g., _20260518, _2026_05_18, _20260518_154320)
+    # The regex handles both separated (2026-05-18) and compact (20260518) formats
+    table_name = re.sub(r'_[0-9]{4}[_-]?[0-9]{2}[_-]?[0-9]{2}(?:_[0-9]{6})?$', '', table_name)
+
+    # Sanitize to BigQuery-safe characters (alphanumeric + underscore only)
     return re.sub(r'[^a-zA-Z0-9_]', '_', table_name)
 
 
 def _validate_file(blob, file_name: str, table_name: str):
     """
-    Validate the file content against its schema.
-    Returns (total_valid, total_invalid).
+    Validate the file content against its schema using stdlib csv/json.
+    Returns (valid_count, invalid_count). All-or-nothing: first error quarantines the file.
     """
+    schema = get_schema(table_name, storage_client, SCHEMA_BUCKET)
+    if not schema:
+        logger.warning(f"No schema found for table: {table_name}. File will be quarantined.")
+        return 0, 1
+
     total_valid = 0
-    total_invalid = 0
 
     with blob.open("rt") as f:
         try:
-            if file_name.endswith(".csv"):
-                iterator = pd.read_csv(f, chunksize=10000)
-            elif file_name.endswith((".jsonl", ".json")):
-                # Peeking at the first character to determine if it is a JSON array
-                is_json_array = False
-                try:
-                    first_char = f.read(1)
-                    while first_char and first_char.isspace():
-                        first_char = f.read(1)
-                    if first_char == '[':
-                        is_json_array = True
-                    f.seek(0)  # Reset stream position after peeking
-                except Exception as peek_err:
-                    logger.warning(f"Failed to peek first character for JSON format, defaulting to JSONL: {peek_err}")
-                    is_json_array = False
-
-                if is_json_array:
-                    logger.info(f"Detected standard JSON array for file: {file_name}. Reading without chunking.")
-                    df = pd.read_json(f)
-                    iterator = [df]
-                else:
-                    iterator = pd.read_json(f, lines=True, chunksize=10000)
-            else:
+            ext = os.path.splitext(file_name)[1].lower()
+            if ext not in SUPPORTED_FORMATS:
                 logger.warning(f"Unsupported file format: {file_name}")
                 return 0, 1
 
-            for chunk_df in iterator:
-                valid_df, invalid_df = validate_dataframe(
-                    chunk_df, table_name,
-                    storage_client=storage_client,
-                    schema_bucket=SCHEMA_BUCKET
-                )
+            if ext == ".csv":
+                records = csv.DictReader(f)
+            else:  # .jsonl or .json (treated as JSONL)
+                records = (json.loads(line) for line in f if line.strip())
 
-                if not invalid_df.empty:
-                    total_invalid += len(invalid_df)
-                    break  # All-or-nothing
+            for record in records:
+                error = validate_record(record, schema)
+                if error:
+                    logger.info(f"Validation failed in {file_name}: {error}")
+                    return 0, 1  # All-or-nothing
+                total_valid += 1
 
-                total_valid += len(valid_df)
         except Exception as e:
             logger.error(f"Failed to parse file {file_name}: {e}")
             return 0, 1
 
-    return total_valid, total_invalid
+    return total_valid, 0
 
 
 def _quarantine_file(blob, processing_bkt, file_name: str):
@@ -232,7 +190,8 @@ def _quarantine_file(blob, processing_bkt, file_name: str):
         )
         blob.delete(if_generation_match=blob.generation)
     except (exceptions.NotFound, exceptions.PreconditionFailed):
-        pass  # Another instance might have processed it concurrently
+        # Another Cloud Run instance may have already quarantined this file
+        logger.debug(f"Quarantine race condition for {file_name} — already handled by another instance.")
 
 
 def _load_to_bigquery(blob, processing_bkt, file_name: str, table_name: str, table_id: str):
@@ -257,7 +216,8 @@ def _load_to_bigquery(blob, processing_bkt, file_name: str, table_name: str, tab
     # Build BQ load config
     safe_job_name = re.sub(r'[^a-zA-Z0-9_-]', '_', file_name)
     job_id = f"ingest_{safe_job_name}_{blob.generation}"
-    is_json = file_name.endswith((".jsonl", ".json"))
+    ext = os.path.splitext(file_name)[1].lower()
+    is_json = ext in JSON_FORMATS
 
     bq_schema = BQ_SCHEMA_REGISTRY.get(table_name)
 
@@ -310,13 +270,14 @@ def _archive_file(blob, processing_bkt, staging_blob_name: str):
         processing_bkt.copy_blob(blob, archive_bkt, if_source_generation_match=blob.generation)
         blob.delete(if_generation_match=blob.generation)
     except (exceptions.NotFound, exceptions.PreconditionFailed):
-        pass
+        logger.debug(f"Archive race condition for blob {blob.name} — already handled by another instance.")
 
-    staging_bkt = storage_client.bucket(STAGING_BUCKET)
-    try:
-        staging_bkt.blob(staging_blob_name).delete()
-    except exceptions.NotFound:
-        pass
+    if staging_blob_name:  # Only delete staging blob if it exists
+        staging_bkt = storage_client.bucket(STAGING_BUCKET)
+        try:
+            staging_bkt.blob(staging_blob_name).delete()
+        except exceptions.NotFound:
+            pass
 
 
 # --- Main Processing Logic ---
@@ -335,39 +296,52 @@ def process_file(bucket_name: str, file_name: str):
     table_name = _resolve_table_name(file_name)
     table_id = f"{PROJECT_ID}.{BRONZE_DATASET}.{table_name}"
 
-    # Step 2: Validate the file
-    total_valid, total_invalid = _validate_file(blob, file_name, table_name)
+    try:
+        # Step 2: Validate the file
+        total_valid, total_invalid = _validate_file(blob, file_name, table_name)
 
-    # Step 3: Route based on validation result
-    if total_invalid > 0:
-        _quarantine_file(blob, processing_bkt, file_name)
-        logger.info(f"Ingestion complete for {file_name}: file is invalid. Moved to quarantine.")
-        return {
-            "status": "quarantined",
-            "valid_records_loaded": 0,
-            "invalid_records": total_invalid
-        }
-
-    if total_valid > 0:
-        result = _load_to_bigquery(blob, processing_bkt, file_name, table_name, table_id)
-        if result["status"] == "bq_loaded":
-            _archive_file(blob, processing_bkt, result["staging_blob_name"])
-            logger.info(f"Ingestion complete for {file_name}. File moved to archive.")
+        # Step 3: Route based on validation result
+        if total_invalid > 0:
+            _quarantine_file(blob, processing_bkt, file_name)
+            logger.info(f"Ingestion complete for {file_name}: file is invalid. Moved to quarantine.")
             return {
-                "status": "success",
-                "valid_records_loaded": total_valid,
-                "invalid_records": 0
+                "status": "quarantined",
+                "valid_records_loaded": 0,
+                "invalid_records": total_invalid
             }
-        return result
 
-    # Handle empty files
-    logger.warning(f"File {file_name} is empty. Archiving immediately.")
-    _archive_file(blob, processing_bkt, "")
-    return {
-        "status": "empty",
-        "valid_records_loaded": 0,
-        "invalid_records": 0
-    }
+        if total_valid > 0:
+            result = _load_to_bigquery(blob, processing_bkt, file_name, table_name, table_id)
+            if result["status"] == "bq_loaded":
+                _archive_file(blob, processing_bkt, result["staging_blob_name"])
+                logger.info(f"Ingestion complete for {file_name}. File moved to archive.")
+                return {
+                    "status": "success",
+                    "valid_records_loaded": total_valid,
+                    "invalid_records": 0
+                }
+            return result
+
+        # Handle empty files
+        logger.warning(f"File {file_name} is empty. Archiving immediately.")
+        _archive_file(blob, processing_bkt, "")
+        return {
+            "status": "empty",
+            "valid_records_loaded": 0,
+            "invalid_records": 0
+        }
+    except Exception as e:
+        logger.error(f"Critical error processing file {file_name} after lock acquisition: {e}. Moving to quarantine to prevent silent data loss.")
+        try:
+            _quarantine_file(blob, processing_bkt, file_name)
+        except Exception as q_err:
+            logger.error(f"Failed to quarantine file {file_name} during disaster recovery: {q_err}")
+        return {
+            "status": "failed_but_quarantined",
+            "error": str(e),
+            "valid_records_loaded": 0,
+            "invalid_records": 0
+        }
 
 
 # --- API Endpoint ---
