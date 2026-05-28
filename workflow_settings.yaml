@@ -1,0 +1,9 @@
+defaultProject: "prj-sbx-dataplaform-dev-2ac7"
+defaultLocation: "europe-west1"
+defaultDataset: "silver_runbook"
+defaultAssertionDataset: "dataform_assertions_runbook"
+
+vars:
+  bronze_schema: "bronze_runbook"
+  silver_schema: "silver_runbook"
+  gold_schema: "gold_runbook"

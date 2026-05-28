@@ -12,10 +12,6 @@ variable "environment" {
   description = "The deployment environment"
   type        = string
 
-  validation {
-    condition     = can(regex("^(dev|prod)$", var.environment))
-    error_message = "Environment must be one of: dev, prod."
-  }
 }
 
 variable "data_engineers_group" {

@@ -1,30 +1,24 @@
 terraform {
   required_version = ">= 1.5.0, < 2.0.0"
-  backend "gcs" {}
   required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 5.44"
-    }
-    google-beta = {
-      source  = "hashicorp/google-beta"
-      version = "~> 5.44"
-    }
+    google = { source = "hashicorp/google", version = "~> 5.44" }
+    google-beta = { source = "hashicorp/google-beta", version = "~> 5.44" }
+    github = { source = "integrations/github", version = "~> 6.0" }
   }
 }
 
-locals {
-  config = yamldecode(file("${path.module}/../env/config.${var.environment}.yaml"))
-}
+locals { config = yamldecode(file("${path.module}/../env/config.${var.environment}.yaml")) }
 
-provider "google" {
-  project = local.config.gcp.project_id
-  region  = local.config.gcp.region
-}
+provider "google" { project = local.config.gcp.project_id; region = local.config.gcp.region }
+provider "google-beta" { project = local.config.gcp.project_id; region = local.config.gcp.region }
+provider "github" { owner = var.github_owner }
 
-provider "google-beta" {
-  project = local.config.gcp.project_id
-  region  = local.config.gcp.region
+# Création dynamique du Dépôt GitHub
+resource "github_repository" "data_platform_repo" {
+  name        = "data-platform-${var.environment}"
+  description = "Modern Data Stack Repository for environment ${var.environment}"
+  visibility  = "public"
+  auto_init   = false
 }
 
 module "storage" {
@@ -59,15 +53,9 @@ module "ingestion" {
 }
 
 module "dataform" {
-  source      = "./modules/dataform"
-  project_id  = local.config.gcp.project_id
-  region      = local.config.gcp.region
-  environment = var.environment
-}
-
-module "monitoring" {
-  source                   = "./modules/monitoring"
-  project_id               = local.config.gcp.project_id
-  environment              = var.environment
-  observability_dataset_id = module.bigquery.observability_dataset_id
+  source       = "./modules/dataform"
+  project_id   = local.config.gcp.project_id
+  region       = local.config.gcp.region
+  environment  = var.environment
+  git_repo_url = github_repository.data_platform_repo.html_url # Injection de l'URL GitHub
 }

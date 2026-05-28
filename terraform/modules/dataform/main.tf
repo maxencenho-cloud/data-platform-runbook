@@ -1,3 +1,5 @@
+variable "git_repo_url" {} # <-- À ajouter en haut du fichier avec les autres variables
+
 variable "project_id" {
   description = "The GCP project ID"
   type        = string
@@ -21,9 +23,7 @@ data "google_project" "project" {
 resource "google_secret_manager_secret" "dataform_github_token" {
   project   = var.project_id
   secret_id = "dataform-github-token-${var.environment}"
-  replication {
-    auto {}
-  }
+  replication { user_managed { replicas { location = "europe-west1" } } }
 }
 
 # Note: The secret version (the actual token) must be added manually by the user
@@ -39,13 +39,14 @@ resource "google_secret_manager_secret_iam_member" "dataform_secret_accessor" {
 
 # 3. Create the Dataform Repository with Git sync
 resource "google_dataform_repository" "dataform_repo" {
-  provider = google-beta
-  project  = var.project_id
-  region   = var.region
-  name     = "dataform-repo-${var.environment}"
+  provider        = google-beta
+  project         = var.project_id
+  region          = var.region
+  name            = "dataform-repo-${var.environment}"
+  service_account = google_service_account.dataform_execution_sa.email
 
   git_remote_settings {
-    url                                 = "https://github.com/nnoziere-pyltech/data-platform.git"
+    url                                 = var.git_repo_url # <-- Ligne dynamique
     default_branch                      = "main"
     authentication_token_secret_version = "${google_secret_manager_secret.dataform_github_token.id}/versions/latest"
   }
