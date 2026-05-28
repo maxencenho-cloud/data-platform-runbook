@@ -25,15 +25,12 @@ provider "github" {
   owner = var.github_owner 
 }
 
-# Création dynamique du Dépôt GitHub
 resource "github_repository" "data_platform_repo" {
   name        = "data-platform-${var.environment}"
   description = "Modern Data Stack Repository for environment ${var.environment}"
   visibility  = "public"
   auto_init   = false
 }
-
-# ... (Laissez le reste des appels aux modules intact en dessous) ...
 
 module "storage" {
   source      = "./modules/storage"
@@ -71,5 +68,5 @@ module "dataform" {
   project_id   = local.config.gcp.project_id
   region       = local.config.gcp.region
   environment  = var.environment
-  git_repo_url = github_repository.data_platform_repo.html_url # Injection de l'URL GitHub
+  git_repo_url = github_repository.data_platform_repo.html_url
 }
