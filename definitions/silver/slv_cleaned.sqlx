@@ -1,0 +1,22 @@
+config {
+  type: "incremental",
+  schema: dataform.projectConfig.vars.silver_schema,
+  description: "Cleaned representation of the raw example data.",
+  uniqueKey: ["id"],
+  assertions: {
+    uniqueKey: ["id"],
+    nonNull: ["id", "name"]
+  }
+}
+
+SELECT
+  id,
+  UPPER(name) AS name,
+  value,
+  _PARTITIONTIME AS ingested_at,
+  CURRENT_TIMESTAMP() AS processed_at
+FROM
+  ${ref("example_raw_data")}
+WHERE
+  value IS NOT NULL
+${when(incremental(), `AND _PARTITIONTIME > (SELECT MAX(ingested_at) FROM ${self()})`)}

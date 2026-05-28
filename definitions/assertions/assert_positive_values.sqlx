@@ -1,0 +1,12 @@
+config {
+  type: "assertion",
+  description: "Ensures that total count and total value are never negative."
+}
+
+SELECT
+  *
+FROM
+  ${ref("gld_aggregated")}
+WHERE
+  total_count < 0
+  OR total_value < 0
