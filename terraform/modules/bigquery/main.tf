@@ -10,7 +10,7 @@ locals {
 
 resource "google_bigquery_dataset" "medallion" {
   for_each    = local.medallion_datasets
-  dataset_id  = each.key
+  dataset_id  = "${each.key}_${var.environment}" # <-- LA CORRECTION EST ICI
   location    = var.region
   description = each.value
 
@@ -24,7 +24,7 @@ resource "google_bigquery_dataset" "medallion" {
 # --- Observability Dataset (separate: has table expiration) ---
 
 resource "google_bigquery_dataset" "observability_logs" {
-  dataset_id  = "observability_logs"
+  dataset_id  = "observability_logs_${var.environment}" # <-- ICI AUSSI
   location    = var.region
   description = "Centralized logs for Data Platform Jobs"
 
