@@ -7,11 +7,23 @@ terraform {
   }
 }
 
-locals { config = yamldecode(file("${path.module}/../env/config.${var.environment}.yaml")) }
+locals { 
+  config = yamldecode(file("${path.module}/../env/config.${var.environment}.yaml")) 
+}
 
-provider "google" { project = local.config.gcp.project_id; region = local.config.gcp.region }
-provider "google-beta" { project = local.config.gcp.project_id; region = local.config.gcp.region }
-provider "github" { owner = var.github_owner }
+provider "google" { 
+  project = local.config.gcp.project_id
+  region  = local.config.gcp.region 
+}
+
+provider "google-beta" { 
+  project = local.config.gcp.project_id
+  region  = local.config.gcp.region 
+}
+
+provider "github" { 
+  owner = var.github_owner 
+}
 
 # Création dynamique du Dépôt GitHub
 resource "github_repository" "data_platform_repo" {
@@ -20,6 +32,8 @@ resource "github_repository" "data_platform_repo" {
   visibility  = "public"
   auto_init   = false
 }
+
+# ... (Laissez le reste des appels aux modules intact en dessous) ...
 
 module "storage" {
   source      = "./modules/storage"

@@ -23,7 +23,14 @@ data "google_project" "project" {
 resource "google_secret_manager_secret" "dataform_github_token" {
   project   = var.project_id
   secret_id = "dataform-github-token-${var.environment}"
-  replication { user_managed { replicas { location = "europe-west1" } } }
+  
+  replication { 
+    user_managed { 
+      replicas { 
+        location = "europe-west1" 
+      } 
+    } 
+  }
 }
 
 # Note: The secret version (the actual token) must be added manually by the user
